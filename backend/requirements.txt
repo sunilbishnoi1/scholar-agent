@@ -1,0 +1,18 @@
+fastapi>=0.111.0
+uvicorn>=0.29.0
+
+# Celery for background tasks
+celery[redis]>=5.4.0
+
+# Database ORM
+sqlalchemy>=2.0.29
+
+# HTTP client and environment variables
+requests>=2.32.3
+python-dotenv>=1.0.1
+
+# Data validation
+pydantic>=2.8.0
+
+# For handling form data
+python-multipart>=0.0.9

@@ -1,0 +1,10 @@
+docs/
+.env
+.github
+venv/
+__pycache__/
+test.db
+*.pyc
+
+frontend/node_modules/
+frontend/package-lock.json
