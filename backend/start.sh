@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
 
-# Run the web server
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
+# start celery in background (logs go to stdout)
+celery -A main.celery_app worker --loglevel=info &
+
+# start your web server in foreground (Render expects a process listening on $PORT)
+exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}

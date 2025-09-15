@@ -1,51 +1,7 @@
-services:
-  - name: scholar-redis
-    type: redis
-    plan: free
-    ipAllowList: []
-
-  - name: scholar-backend
-    type: web
-    plan: free
-    env: docker
-    dockerContext: ./backend
-    dockerfilePath: Dockerfile
-    dockerCommand: ./start.sh
-    envVars:
-      # DATABASE_URL removed — set DATABASE_URL in the Render dashboard instead
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: scholar-redis
-          property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        sync: false
-      - key: FRONTEND_URL
-        sync: false
-
-  - name: scholar-worker
-    type: worker
-    plan: free
-    env: docker
-    dockerContext: ./backend
-    dockerfilePath: Dockerfile
-    dockerCommand: celery -A main.celery_app worker --loglevel=info
-    envVars:
-      # DATABASE_URL removed — set DATABASE_URL in the Render dashboard instead
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: scholar-redis
-          property: connectionString
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        sync: false
+- name: scholar-backend
+  type: web
+  plan: free
+  env: docker
+  dockerContext: ./backend
+  dockerfilePath: Dockerfile
+  dockerCommand: ./start.sh
