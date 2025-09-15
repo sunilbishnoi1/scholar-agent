@@ -3,12 +3,19 @@ services:
   # - name: scholar-db
   #   type: postgres
   #   plan: free
-  #   postgresVersion: "15"
+  #   properties:
+  #      version: "17"
 
   # 2. Redis Instance for Celery
   - name: scholar-redis
     type: redis
     plan: free
+    ipAllowList:
+      - sourceType: service
+        sourceName: scholar-backend
+      - sourceType: service
+        sourceName: scholar-worker
+
 
   # 3. FastAPI Web Service (the API)
   - name: scholar-backend
