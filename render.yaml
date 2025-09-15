@@ -19,11 +19,11 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerCommand: ./start.sh
     envVars:
-      - key: DATABASE_URL
-        fromService:
-          type: postgres
-          name: scholar-db
-          property: connectionString
+      # - key: DATABASE_URL
+      #   fromService:
+      #     type: postgres
+      #     name: scholar-db
+      #     property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
@@ -49,11 +49,11 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerCommand: celery -A main.celery_app worker --loglevel=info
     envVars:
-      - key: DATABASE_URL
-        fromService:
-          type: postgres
-          name: scholar-db
-          property: connectionString
+      # - key: DATABASE_URL
+      #   fromService:
+      #     type: postgres
+      #     name: scholar-db
+      #     property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
