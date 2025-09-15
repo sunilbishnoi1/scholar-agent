@@ -3,6 +3,7 @@ uvicorn>=0.29.0
 
 # Celery for background tasks
 celery[redis]>=5.4.0
+gevent
 
 # Database ORM
 sqlalchemy>=2.0.29
@@ -16,3 +17,17 @@ pydantic>=2.8.0
 
 # For handling form data
 python-multipart>=0.0.9
+
+# --- Authentication ---
+passlib[bcrypt]>=1.7.3
+python-jose[cryptography]>=3.3.0
+
+pydantic[email]
+
+#email service ->brevo
+sib-api-v3-sdk
+
+resend
+
+# Markdown to HTML conversion
+markdown>=3.6

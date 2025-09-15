@@ -10,8 +10,9 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
-    email = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False) 
     institution = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     research_projects = relationship('ResearchProject', back_populates='user')
@@ -24,7 +25,9 @@ class ResearchProject(Base):
     title = Column(String, nullable=False)
     research_question = Column(Text, nullable=False)
     keywords = Column(JSON)
+    subtopics = Column(JSON)
     status = Column(String, default='planning')
+    total_papers_found = Column(Integer, default=0) # <-- ADDED
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship('User', back_populates='research_projects')
     agent_plans = relationship('AgentPlan', back_populates='project')

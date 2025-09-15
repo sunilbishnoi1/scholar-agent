@@ -26,7 +26,6 @@ class PaperRetriever:
     def _search_arxiv(self, query: str, max_results: int = 10):
         """Searches the arXiv API and returns a list of paper dictionaries."""
         papers = []
-        # Using quote_plus to handle spaces and special characters appropriately.
         search_query = f'search_query=all:{urllib.parse.quote_plus(query)}&start=0&max_results={max_results}'
         try:
             with urllib.request.urlopen(self.arxiv_base_url + search_query, timeout=15) as response:
@@ -64,7 +63,6 @@ class PaperRetriever:
             results = response.json()
             
             for item in results.get('data', []):
-                # Ensure all required fields are present to avoid errors
                 if item.get('title') and item.get('abstract') and item.get('url'):
                     papers.append({
                         "title": self._clean_text(item['title']),
@@ -78,41 +76,17 @@ class PaperRetriever:
             logging.error(f"Error fetching from Semantic Scholar: {e}")
         return papers
 
-    def search_papers(self, planner_response: str, max_papers: int, fallback_keywords: list[str] = None):
+    def search_papers(self, search_terms: list[str], max_papers: int):
         """
-        Orchestrates searching across multiple academic APIs based on a planner's strategy.
-        It parses search terms from the planner, queries the sources, and de-duplicates the results.
-        If parsing fails, it uses the provided fallback keywords.
+        Orchestrates searching across multiple academic APIs using a list of search terms.
         """
-        search_terms = []
-        try:
-            strategy_section = re.search(r'1\.\s+Search Strategy:([\s\S]*?)(?=\n\s*\d\.\s|\Z)', planner_response, re.IGNORECASE)
-            
-            if strategy_section:
-                content = strategy_section.group(1)
-                search_terms = re.findall(r'^\s*[\*\-\d]+\.?\s*(.*)', content, re.MULTILINE)
-                search_terms = [term.strip() for term in search_terms if term.strip()]
-        except Exception as e:
-            logging.error(f"Failed to parse planner response for search terms: {e}")
-        
         if not search_terms:
-            logging.warning("Could not parse specific search terms from planner. Using fallback keywords.")
-            if fallback_keywords:
-                search_terms = fallback_keywords
-            else:
-                logging.error("Parsing failed and no fallback keywords were provided.")
-                return []
-            
-        logging.info(f"Extracted search terms: {search_terms}")
+            logging.error("No search terms provided to search_papers method.")
+            return []
+
+        logging.info(f"Received search terms: {search_terms}")
         
-        if len(search_terms) == 1 and len(search_terms[0]) > 100:
-            logging.warning("Single long search term detected, might be an unformatted list. Using keywords as a safer alternative.")
-            search_terms = fallback_keywords if fallback_keywords else []
-
-        if not search_terms:
-             logging.error("No valid search terms found after parsing and fallback.")
-             return []
-
+        # Calculate how many papers to fetch per search term from each source
         papers_per_query = max(1, max_papers // (len(search_terms) * 2)) if search_terms else 0
         
         all_papers = []
@@ -121,9 +95,9 @@ class PaperRetriever:
             if not term: continue
             
             all_papers.extend(self._search_arxiv(term, papers_per_query))
+            time.sleep(1.5) # Wait 1.5 seconds before the next API call
             all_papers.extend(self._search_semantic_scholar(term, papers_per_query))
-            
-            time.sleep(1) # Wait for 1 second before the next set of API calls
+            time.sleep(1.5) # Wait again before the next loop iteration
 
         unique_papers = []
         seen_titles = set()
