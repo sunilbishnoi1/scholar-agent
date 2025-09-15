@@ -1,7 +1,8 @@
-- name: scholar-backend
-  type: web
-  plan: free
-  env: docker
-  dockerContext: ./backend
-  dockerfilePath: Dockerfile
-  dockerCommand: ./start.sh
+services:
+  - name: scholar-backend
+    type: web
+    plan: free
+    env: docker
+    dockerContext: ./backend
+    dockerfilePath: Dockerfile
+    dockerCommand: ./start.sh
