@@ -10,11 +10,7 @@ services:
   - name: scholar-redis
     type: redis
     plan: free
-    ipAllowList:
-      - sourceType: service
-        sourceName: scholar-backend
-      - sourceType: service
-        sourceName: scholar-worker
+    ipAllowList: []
 
 
   # 3. FastAPI Web Service (the API)
