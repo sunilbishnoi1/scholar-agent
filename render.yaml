@@ -1,9 +1,9 @@
 services:
   # 1. PostgreSQL Database
-  - name: scholar-db
-    type: postgres
-    plan: free
-    postgresVersion: "15"
+  # - name: scholar-db
+  #   type: postgres
+  #   plan: free
+  #   postgresVersion: "15"
 
   # 2. Redis Instance for Celery
   - name: scholar-redis
