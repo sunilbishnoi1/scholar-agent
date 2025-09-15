@@ -1,9 +1,9 @@
 services:
   # 1. PostgreSQL Database
   - name: scholar-db
-    type: psql
+    type: postgres
     plan: free
-    psqlVersion: "15"
+    postgresVersion: "15"
 
   # 2. Redis Instance for Celery
   - name: scholar-redis
@@ -17,13 +17,11 @@ services:
     env: docker
     rootDir: ./backend
     dockerfilePath: ./backend/Dockerfile
-    # Set the command to run our start script
     dockerCommand: ./start.sh
-    # Set environment variables
     envVars:
       - key: DATABASE_URL
         fromService:
-          type: psql
+          type: postgres
           name: scholar-db
           property: connectionString
       - key: REDIS_URL
@@ -32,15 +30,15 @@ services:
           name: scholar-redis
           property: connectionString
       - key: SECRET_KEY
-        generateValue: true # Let Render generate a secure secret key
+        generateValue: true
       - key: GEMINI_API_KEY
-        sync: false # Set this manually in the Render dashboard for security
+        sync: false
       - key: BREVO_API_KEY
-        sync: false # Set this manually
+        sync: false
       - key: BREVO_SENDER_EMAIL
-        sync: false # Set this manually
+        sync: false
       - key: FRONTEND_URL
-        sync: false # We will set this after deploying the frontend
+        sync: false
 
   # 4. Celery Background Worker
   - name: scholar-worker
@@ -49,12 +47,11 @@ services:
     env: docker
     rootDir: ./backend
     dockerfilePath: ./backend/Dockerfile
-    # This command starts the Celery worker
     dockerCommand: celery -A main.celery_app worker --loglevel=info
     envVars:
       - key: DATABASE_URL
         fromService:
-          type: psql
+          type: postgres
           name: scholar-db
           property: connectionString
       - key: REDIS_URL
