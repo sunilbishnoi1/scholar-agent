@@ -1,19 +1,9 @@
 services:
-  # 1. PostgreSQL Database
-  # - name: scholar-db
-  #   type: postgres
-  #   plan: free
-  #   properties:
-  #      version: "17"
-
-  # 2. Redis Instance for Celery
   - name: scholar-redis
     type: redis
     plan: free
     ipAllowList: []
 
-
-  # 3. FastAPI Web Service (the API)
   - name: scholar-backend
     type: web
     plan: free
@@ -22,11 +12,7 @@ services:
     dockerfilePath: Dockerfile
     dockerCommand: ./start.sh
     envVars:
-      - key: DATABASE_URL
-        fromService:
-          type: postgres
-          name: scholar-db
-          property: connectionString
+      # DATABASE_URL removed — set DATABASE_URL in the Render dashboard instead
       - key: REDIS_URL
         fromService:
           type: redis
@@ -43,7 +29,6 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-  # 4. Celery Background Worker
   - name: scholar-worker
     type: worker
     plan: free
@@ -52,11 +37,7 @@ services:
     dockerfilePath: Dockerfile
     dockerCommand: celery -A main.celery_app worker --loglevel=info
     envVars:
-      - key: DATABASE_URL
-        fromService:
-          type: postgres
-          name: scholar-db
-          property: connectionString
+      # DATABASE_URL removed — set DATABASE_URL in the Render dashboard instead
       - key: REDIS_URL
         fromService:
           type: redis
