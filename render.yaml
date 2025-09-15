@@ -1,0 +1,70 @@
+services:
+  # 1. PostgreSQL Database
+  - name: scholar-db
+    type: psql
+    plan: free
+    psqlVersion: "15"
+
+  # 2. Redis Instance for Celery
+  - name: scholar-redis
+    type: redis
+    plan: free
+
+  # 3. FastAPI Web Service (the API)
+  - name: scholar-backend
+    type: web
+    plan: free
+    env: docker
+    rootDir: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    # Set the command to run our start script
+    dockerCommand: ./start.sh
+    # Set environment variables
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: psql
+          name: scholar-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: scholar-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true # Let Render generate a secure secret key
+      - key: GEMINI_API_KEY
+        sync: false # Set this manually in the Render dashboard for security
+      - key: BREVO_API_KEY
+        sync: false # Set this manually
+      - key: BREVO_SENDER_EMAIL
+        sync: false # Set this manually
+      - key: FRONTEND_URL
+        sync: false # We will set this after deploying the frontend
+
+  # 4. Celery Background Worker
+  - name: scholar-worker
+    type: worker
+    plan: free
+    env: docker
+    rootDir: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    # This command starts the Celery worker
+    dockerCommand: celery -A main.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: psql
+          name: scholar-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: scholar-redis
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false

@@ -31,8 +31,11 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+
 app = FastAPI()
-celery_app = Celery('literature_agent', broker='redis://localhost:6379')
+celery_app = Celery('literature_agent', broker=REDIS_URL)
 
 app.add_middleware(
     CORSMiddleware,
