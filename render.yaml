@@ -4,5 +4,7 @@ services:
     plan: free
     env: docker
     dockerContext: ./backend
-    dockerfilePath: Dockerfile
+    dockerfilePath: ./backend/Dockerfile
     dockerCommand: ./start.sh
+    
+
