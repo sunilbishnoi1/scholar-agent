@@ -18,15 +18,15 @@ services:
     type: web
     plan: free
     env: docker
-    rootDir: ./backend
-    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerfilePath: Dockerfile
     dockerCommand: ./start.sh
     envVars:
-      # - key: DATABASE_URL
-      #   fromService:
-      #     type: postgres
-      #     name: scholar-db
-      #     property: connectionString
+      - key: DATABASE_URL
+        fromService:
+          type: postgres
+          name: scholar-db
+          property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
@@ -48,15 +48,15 @@ services:
     type: worker
     plan: free
     env: docker
-    rootDir: ./backend
-    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerfilePath: Dockerfile
     dockerCommand: celery -A main.celery_app worker --loglevel=info
     envVars:
-      # - key: DATABASE_URL
-      #   fromService:
-      #     type: postgres
-      #     name: scholar-db
-      #     property: connectionString
+      - key: DATABASE_URL
+        fromService:
+          type: postgres
+          name: scholar-db
+          property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
