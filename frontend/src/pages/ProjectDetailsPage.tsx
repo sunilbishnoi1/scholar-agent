@@ -1,8 +1,7 @@
-import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getProjectById } from '../api/client';
-import { Container, Typography, Box, CircularProgress, Alert, Paper, Divider, Button } from '@mui/material';
+import { Typography, Box, CircularProgress, Alert, Paper, Divider, Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

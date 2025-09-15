@@ -14,7 +14,7 @@ interface ProjectState {
     updateProjectStatus: (projectId: string, status: ResearchProject['status']) => void;
 }
 
-export const useProjectStore = create<ProjectState>((set, get) => ({
+export const useProjectStore = create<ProjectState>((set, _get) => ({
     projects: [],
     isLoading: false,
     error: null,
@@ -39,7 +39,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             keywords: [],
             agent_plans: [],
             paper_references: [],
-            created_at: ''
+            created_at: '',
+            subtopics: [],
+            total_papers_found: 0
         };
 
         // Add the optimistic project to the state right away.
