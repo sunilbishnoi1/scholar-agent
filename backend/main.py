@@ -29,12 +29,22 @@ engine = create_engine(
     connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in DATABASE_URL else {}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
+
+def create_db_and_tables():
+    try:
+        Base.metadata.create_all(bind=engine)
+        logging.info("Database tables created successfully.")
+    except Exception as e:
+        logging.error(f"Error creating database tables: {e}")
+        # Depending on your needs, you might want the app to fail here
+        # or just log the error and continue.
+        raise
 
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
-app = FastAPI()
+app = FastAPI(on_startup=[create_db_and_tables])
 celery_app = Celery('literature_agent', broker=REDIS_URL)
 
 app.add_middleware(
