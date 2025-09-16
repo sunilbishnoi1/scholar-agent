@@ -47,9 +47,15 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 app = FastAPI(on_startup=[create_db_and_tables])
 celery_app = Celery('literature_agent', broker=REDIS_URL)
 
+origins = [
+    "https://scholar-agent.vercel.app", # production frontend
+    "http://localhost:3000",          
+    "http://localhost:5173",           
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
