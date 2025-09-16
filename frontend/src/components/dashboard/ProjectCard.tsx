@@ -8,6 +8,7 @@ import { useProjectStore } from '../../store/projectStore';
 import { toast } from 'react-toastify';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useProjectStatusPoller } from '../../hooks/useProjectStatusPoller';
+    import { useNavigate } from 'react-router-dom';
 
 interface ProjectCardProps {
     project: ResearchProject;
@@ -87,11 +88,19 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
         }
     };
 
+
+    const navigate = useNavigate();
+    const handleCardClick = async () => {
+    if (project.status === 'completed') {
+        navigate(`/project/${project.id}`);
+    }
+    };
+
     const isReady = project.status === 'created';
     const isFailed = project.status === 'error' || project.status === 'error_no_papers_found';
 
     return (
-        <Card className="flex flex-col h-full bg-white/60 backdrop-blur-lg border border-gray-200/50">
+        <Card className="flex flex-col h-full bg-white/60 backdrop-blur-lg border border-gray-200/50" onClick={handleCardClick}>
             <CardContent className="flex-grow">
                 <Box className="flex justify-between items-start mb-2">
                     <Typography variant="h6" component="div" className="font-bold text-slate-800 text-left">
@@ -99,7 +108,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
                     </Typography>
                     <StatusChip status={project.status} />
                 </Box>
-                <Typography variant="body2" color="text.secondary" className="italic mb-4 text-left">
+                <Typography variant="body2" color="text.secondary" className="italic mb-2 text-left">
                     "{project.research_question}"
                 </Typography>
             </CardContent>
@@ -117,9 +126,16 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
                 )}
                 {isProcessing && <ProgressTracker project={project} />}
                 {project.status === 'completed' && (
-                    <Button component={Link} to={`/project/${project.id}`} variant="contained" size="small"  className='bg-gradient-to-r from-blue-600 to-blue-500 hover:bg-blue-700 text-white'>
+                    <Button
+                        component={Link}
+                        to={`/project/${project.id}`}
+                        variant="contained"
+                        size="small"
+                        className="bg-gradient-to-r from-blue-600 to-blue-500 hover:bg-blue-700 text-white"
+                        onClick={(e) => e.stopPropagation()}
+                        >
                         View Results
-                    </Button>
+                        </Button>
                 )}
                  {isFailed && (
                      <Button

@@ -11,6 +11,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
+import ToolsPage from './pages/ToolsPage';
+import KnowPage from './pages/KnowPage';
 
 const queryClient = new QueryClient();
 
@@ -127,6 +129,8 @@ function App() {
 
                 <Route element={<ProtectedRoute />}>
                   <Route path="/" element={<DashboardPage />} />
+                  <Route path="/tools" element={<ToolsPage/>}/>
+                  <Route path="/know" element={<KnowPage/>}/>
                   <Route path="/project/:projectId" element={<ProjectDetailsPage />} />
                 </Route>
               </Routes>

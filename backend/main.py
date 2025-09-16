@@ -42,15 +42,16 @@ def create_db_and_tables():
         raise
 
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 app = FastAPI(on_startup=[create_db_and_tables])
 celery_app = Celery('literature_agent', broker=REDIS_URL)
 
 origins = [
     "https://scholar-agent.vercel.app", # production frontend
-    "http://localhost:3000",          
-    "http://localhost:5173",           
+    "http://localhost:8000",          
+    "http://localhost:5174",
+    "http://localhost:5173",          
 ]
 
 app.add_middleware(

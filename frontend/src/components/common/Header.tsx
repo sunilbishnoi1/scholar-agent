@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import ScienceIcon from '@mui/icons-material/Science';
-import { AccountCircle, Logout } from '@mui/icons-material';
+import { AccountCircle, Logout, Build as BuildIcon, Info as InfoIcon } from '@mui/icons-material';
 import { IconButton, Button, Box, Menu, MenuItem, ListItemIcon, Typography, Divider } from '@mui/material';
 import { useAuthStore } from '../../store/authStore';
 
@@ -33,6 +33,11 @@ const Header = () => {
         navigate('/login');
     };
 
+    const handleNavigate = (path: string) => {
+        handleClose();
+        navigate(path);
+    };
+
     return (
         <header className="fixed top-0 w-full  backdrop-blur-sm  bg-opacity-90 border-b border-gray-800 z-50">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,6 +48,26 @@ const Header = () => {
                             Scholar Agent
                         </span>
                     </Link>
+
+                    {/* START: ADDED DESKTOP NAVIGATION */}
+                    {isAuthenticated && (
+                        <Box sx={{
+                            display: { xs: 'none', md: 'flex' },
+                            position: 'absolute',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            gap: 2 
+                        }}>
+                            <Button component={Link} to="/tools" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                                Tools
+                            </Button>
+                            <Button component={Link} to="/know" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                                Know
+                            </Button>
+                        </Box>
+                    )}
+                    {/* END: ADDED DESKTOP NAVIGATION */}
+
                     <div>
                         {isAuthenticated ? (
                             <>
@@ -105,6 +130,24 @@ const Header = () => {
                                         <Typography variant="body2" color="text.secondary">{user?.email || '...'}</Typography>
                                     </Box>
                                     
+                                    {/* START: ADDED MOBILE NAVIGATION */}
+                                    <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+                                        <Divider sx={{ my: 0.5 }} />
+                                        <MenuItem onClick={() => handleNavigate('/tools')}>
+                                            <ListItemIcon>
+                                                <BuildIcon fontSize="small" />
+                                            </ListItemIcon>
+                                            Tools
+                                        </MenuItem>
+                                        <MenuItem onClick={() => handleNavigate('/know')}>
+                                            <ListItemIcon>
+                                                <InfoIcon fontSize="small" />
+                                            </ListItemIcon>
+                                            Know
+                                        </MenuItem>
+                                    </Box>
+                                    {/* END: ADDED MOBILE NAVIGATION */}
+
                                     <Divider sx={{ my: 0.5 }} />
                                     
                                     <MenuItem onClick={handleLogout} sx={{color:'red'}}>
@@ -117,8 +160,7 @@ const Header = () => {
                             </>
                         ) : (
                             <Box>
-                                <Button color="inherit" component={Link} to="/login">Login</Button>
-                                <Button variant="contained" component={Link} to="/register">Register</Button>
+                                <Button variant="contained" component={Link} className='bg-gradient-to-r from-blue-600 to-teal-500 hover:bg-blue-700 text-white' to="/register">Get Started</Button>
                             </Box>
                         )}
                     </div>
