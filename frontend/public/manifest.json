@@ -16,6 +16,6 @@
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#14B8A6",
-  "background_color": "#2563EE",
+  "background_color": "#14B8A6",
   "description": "An intelligent agent for academic research and literature analysis."
 }
