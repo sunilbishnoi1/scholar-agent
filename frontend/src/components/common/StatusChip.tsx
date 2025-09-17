@@ -6,6 +6,7 @@ interface StatusChipProps {
 }
 
 const statusStyles: { [key in ResearchProject['status']]: string } = {
+  creating: 'bg-gray-200 text-gray-800 animate-pulse',
   planning: 'bg-blue-100 text-blue-800',
   created: 'bg-gray-100 text-gray-800',
   searching: 'bg-cyan-100 text-cyan-800 animate-pulse',
@@ -17,6 +18,7 @@ const statusStyles: { [key in ResearchProject['status']]: string } = {
 };
 
 const statusText: { [key in ResearchProject['status']]: string } = {
+    creating: 'Creating...',
     planning: 'Planning',
     created: 'Ready to Start',
     searching: 'Searching...',

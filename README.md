@@ -4,7 +4,7 @@
 
 An intelligent, multi-agent platform designed to automate the academic literature review process. Scholar Agent transforms a simple research question into a fully synthesized report, complete with identified research gaps, in a fraction of the time it takes to do manually.
 
-**Live Demo:** [**https://scholaragent.dpdns.org/**](https://scholaragent.dpdns.org/)  **OR**  [**https://scholar-agent.vercel.app/**](https://scholar-agent.vercel.app/)
+**Live Demo:** [**https://scholar-agent.vercel.app/**](https://scholar-agent.vercel.app/)  **OR**  [**https://scholaragent.dpdns.org/**](https://scholaragent.dpdns.org/) (this link might sometime show https security issue)
 
 
 ## 🧑‍💻 Author Information

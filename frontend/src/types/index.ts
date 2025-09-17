@@ -12,7 +12,7 @@ export interface ResearchProject {
     research_question: string;
     keywords: string[];
     subtopics: string[];
-    status: 'planning' | 'searching' | 'analyzing' | 'synthesizing' | 'completed' | 'error' | 'error_no_papers_found' | 'created';
+    status: 'planning' | 'searching' | 'analyzing' | 'synthesizing' | 'completed' | 'error' | 'error_no_papers_found' | 'created' | 'creating';
     created_at: string;
     paper_references: PaperReference[];
     agent_plans: AgentPlan[];

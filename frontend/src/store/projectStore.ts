@@ -35,7 +35,7 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             id: `temp-${Date.now()}`,
             title: newProjectData.title,
             research_question: newProjectData.research_question,
-            status: 'created',
+            status: 'creating',
             keywords: [],
             agent_plans: [],
             paper_references: [],

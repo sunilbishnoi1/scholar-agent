@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, Typography, Button, CardActions, Box, LinearProgress } from '@mui/material';
+import { Card, CardContent, Typography, Button, CardActions, Box, LinearProgress, CircularProgress } from '@mui/material';
 import { Link } from 'react-router-dom';
 import type { ResearchProject } from '../../types';
 import StatusChip from '../common/StatusChip';
@@ -99,6 +99,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     }
     };
 
+    const isCreating = project.status === 'creating';
     const isReady = project.status === 'created';
     const isFailed = project.status === 'error' || project.status === 'error_no_papers_found';
 
@@ -116,6 +117,14 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
                 </Typography>
             </CardContent>
             <CardActions className="bg-slate-50/50 p-4 flex justify-between items-center min-h-[80px]">
+                {isCreating && (
+                     <Box className="flex items-center justify-center w-full">
+                        <CircularProgress size={20} />
+                        <Typography variant="body2" className="ml-2 text-slate-600">
+                            Finalizing project setup...
+                        </Typography>
+                     </Box>
+                )}
                 {isReady && (
                     <Button
                         size="small"
