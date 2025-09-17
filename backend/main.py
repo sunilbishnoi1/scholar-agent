@@ -49,6 +49,7 @@ celery_app = Celery('literature_agent', broker=REDIS_URL)
 
 origins = [
     "https://scholar-agent.vercel.app", # production frontend
+    "https://scholaragent.dpdns.org",
     "http://localhost:8000",          
     "http://localhost:5174",
     "http://localhost:5173",          
