@@ -13,6 +13,7 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import ToolsPage from './pages/ToolsPage';
 import KnowPage from './pages/KnowPage';
+import { useEffect } from 'react';
 
 const queryClient = new QueryClient();
 
@@ -113,33 +114,39 @@ const theme = createTheme({
 });
 
 function App() {
-  useAuthStore.getState().setToken(useAuthStore.getState().token);
+  const { token, fetchUser } = useAuthStore();
+
+  useEffect(() => {
+    if (token) {
+      fetchUser(); // refresh user data on reload
+    }
+  }, [token, fetchUser]);
+
 
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
             <Header />
             <main>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                
+                  <Route path="/know" element={<KnowPage/>}/>
 
                 <Route element={<ProtectedRoute />}>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/tools" element={<ToolsPage/>}/>
-                  <Route path="/know" element={<KnowPage/>}/>
                   <Route path="/project/:projectId" element={<ProjectDetailsPage />} />
                 </Route>
               </Routes>
             </main>
-          </div>
         </Router>
         <ToastContainer
           position="bottom-right"
-          autoClose={5000}
+          autoClose={3000}
           hideProgressBar={false}
           newestOnTop={false}
           closeOnClick

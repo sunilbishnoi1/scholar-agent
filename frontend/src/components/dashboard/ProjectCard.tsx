@@ -78,7 +78,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
 
     const handleStartReview = async () => {
         try {
-            toast.info(`Starting literature review for "${project.title}"...`);
+            // Add a toastId to prevent duplicates on multiple clicks
+            toast.info(`Starting literature review for "${project.title}"...`, {
+                toastId: `start-review-${project.id}`
+            });
             updateProjectStatus(project.id, 'planning');
             await startLiteratureReview(project.id);
         } catch (error) {

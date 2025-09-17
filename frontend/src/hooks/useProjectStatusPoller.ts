@@ -35,15 +35,21 @@ export const useProjectStatusPoller = (projectId?: string) => {
                     if (updatedProject && JSON.stringify(currentProject) !== JSON.stringify(updatedProject)) {
                         updateProject(updatedProject); // Update the entire project object
 
-                        if (currentProject?.status !== updatedProject.status) {
-                             toast.info(`Project "${updatedProject.title}" status: ${updatedProject.status}`);
-                        }
+                        // --- REMOVED THE NOISY INTERMEDIATE STATUS TOAST ---
+                        // The ProgressTracker component already shows the current status.
+                        // We only notify on terminal states (completed or error).
 
                         if (!['searching', 'analyzing', 'synthesizing', 'planning'].includes(updatedProject.status)) {
                             if (updatedProject.status === 'completed') {
-                                toast.success(`Project "${updatedProject.title}" has completed!`);
+                                // Add a toastId to prevent duplicate notifications
+                                toast.success(`Project "${updatedProject.title}" has completed!`, {
+                                    toastId: `${updatedProject.id}-completed`
+                                });
                             } else if (updatedProject.status.startsWith('error')) {
-                                toast.error(`Project "${updatedProject.title}" encountered an error.`);
+                                // Add a toastId to prevent duplicate notifications
+                                toast.error(`Project "${updatedProject.title}" encountered an error.`, {
+                                    toastId: `${updatedProject.id}-error`
+                                });
                             }
                             stopPolling();
                         }

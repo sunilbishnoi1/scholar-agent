@@ -67,8 +67,27 @@ const ToolsPage = () => {
                         }
                         label={emailNotifications ? 'Enabled' : 'Disabled'}
                         labelPlacement="start"
-                        sx={{ ml: 0 }}
+                        sx={{ ml: 4 }}
                     />
+                </Box>
+            </Paper>
+            <Paper 
+                elevation={0} 
+                sx={{ 
+                    p: 4, 
+                    borderRadius: '12px', 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    background: 'rgba(255, 255, 255, 0.5)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    marginTop: 4,
+                }}
+            >
+                <Box sx={{textAlign:'center'}}>
+                    <Typography variant="h6" component="h2" fontWeight="bold" className="bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent font-bold mb-2">
+                                More Tools & Integrations Coming Soon
+                    </Typography>
                 </Box>
             </Paper>
 

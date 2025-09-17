@@ -95,7 +95,7 @@ class PaperRetriever:
             if not term: continue
             
             all_papers.extend(self._search_arxiv(term, papers_per_query))
-            time.sleep(1.5) # Wait 1.5 seconds before the next API call
+            time.sleep(2.5) # Wait 1.5 seconds before the next API call
             all_papers.extend(self._search_semantic_scholar(term, papers_per_query))
             time.sleep(1.5) # Wait again before the next loop iteration
 

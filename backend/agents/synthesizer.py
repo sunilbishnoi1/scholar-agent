@@ -17,6 +17,6 @@ class SynthesisExecutorAgent:
         2. Thematic Organization: Group findings by themes/approaches
         3. Critical Analysis: Compare/contrast findings, identify patterns
         4. Research Gaps: Highlight limitations and future directions
-        5. Proper Citations: APA format with in-text citations
-        6. Section Conclusion: Synthesize key takeaways"""
+        5. Section Conclusion: Synthesize key takeaways
+        6. DON'T include References section in the end"""
         return self.llm_client.chat(prompt)

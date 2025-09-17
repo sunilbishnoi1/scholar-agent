@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import ScienceIcon from '@mui/icons-material/Science';
 import { AccountCircle, Logout, Build as BuildIcon, Info as InfoIcon } from '@mui/icons-material';
 import { IconButton, Button, Box, Menu, MenuItem, ListItemIcon, Typography, Divider } from '@mui/material';
 import { useAuthStore } from '../../store/authStore';
+import icon from '../../assets/sa-icon-192.png'
 
 const Header = () => {
     const { isAuthenticated, logout, user, fetchUser } = useAuthStore();
@@ -43,7 +43,7 @@ const Header = () => {
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     <Link to="/" className="flex items-center no-underline text-slate-800">
-                        <ScienceIcon className="h-8 w-8 text-blue-600" />
+                        <img src={icon} className="h-8 w-8" />
                         <span className="bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent ml-3 font-bold text-xl tracking-normal font-poppins">
                             Scholar Agent
                         </span>
@@ -64,6 +64,30 @@ const Header = () => {
                             <Button component={Link} to="/know" sx={{ color: 'text.primary', fontWeight: 500 }}>
                                 Know
                             </Button>
+                        </Box>
+                    )}
+                    {!isAuthenticated && (
+                    <Box sx={{
+                            display: { xs: 'none', md: 'flex' },
+                            position: 'absolute',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            gap: 2 
+                        }}>
+                            
+                            <Button
+                                component={Link}
+                                to="/know"
+                                sx={{
+                                    color: 'text.primary',
+                                    fontWeight: 700, // bolder for emphasis
+                                    fontSize: { xs: '0.95rem', md: '1.05rem', lg: '1.15rem' }, // responsive sizing
+                                    letterSpacing: '0.5px', // subtle spacing for clarity
+                                    textTransform: 'none', // keeps original casing
+                                }}
+                                >
+                                Features
+                                </Button>
                         </Box>
                     )}
                     {/* END: ADDED DESKTOP NAVIGATION */}
