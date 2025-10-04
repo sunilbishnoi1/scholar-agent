@@ -42,7 +42,7 @@ export const useProjectStatusPoller = (projectId?: string) => {
                         if (!['searching', 'analyzing', 'synthesizing', 'planning'].includes(updatedProject.status)) {
                             if (updatedProject.status === 'completed') {
                                 // Add a toastId to prevent duplicate notifications
-                                toast.success(`Project "${updatedProject.title}" has completed!`, {
+                                toast.success(`Project "${updatedProject.title}" has completed. A report has been sent to your email address.`, {
                                     toastId: `${updatedProject.id}-completed`
                                 });
                             } else if (updatedProject.status.startsWith('error')) {

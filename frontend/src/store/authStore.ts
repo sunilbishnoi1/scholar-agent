@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { User } from '../types';
 import { login as apiLogin, register as apiRegister, getMe, type LoginCredentials, type RegisterCredentials } from '../api/client';
+import { useProjectStore } from './projectStore';
 import { toast } from 'react-toastify';
 
 interface AuthState {
@@ -43,8 +44,15 @@ export const useAuthStore = create(
                 try {
                     const { access_token } = await apiLogin(credentials);
                     set({ token: access_token, isAuthenticated: true });
+                    // Clear any previously-loaded projects from another session/user so the UI
+                    // doesn't show stale projects while we fetch the current user's projects.
+                    try {
+                        useProjectStore.getState().setProjects([]);
+                    } catch (e) {
+                        // ignore if project store isn't available for some reason
+                    }
                     await get().fetchUser(); // Fetch user data immediately after a successful login
-                    toast.success('Login successful!');
+                    // toast.success('Login successful!');
                     return true;
                 } catch (error: any) {
                     const errorMessage = error.response?.data?.detail || "Login failed. Please check your credentials.";
@@ -68,6 +76,12 @@ export const useAuthStore = create(
             },
             logout: () => {
                 set({ user: null, token: null, isAuthenticated: false });
+                // Clear projects on logout so another user's projects aren't visible.
+                try {
+                    useProjectStore.getState().setProjects([]);
+                } catch (e) {
+                    // ignore
+                }
                 toast.info("You have been logged out.");
             },
         }),
