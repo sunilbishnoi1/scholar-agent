@@ -27,10 +27,40 @@ class TokenData(BaseModel):
 
 # --- Utility Functions ---
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a password against a stored hash.
+
+    Bcrypt (the underlying C library) has a 72-byte limit on passwords. If the stored
+    hash is a bcrypt hash (starts with $2), truncate the provided plaintext to 72 bytes
+    (UTF-8) before verifying to avoid an exception coming from the bcrypt backend.
+    """
+    try:
+        if isinstance(hashed_password, str) and hashed_password.startswith("$2"):
+            # Truncate to bcrypt's 72-byte limit when needed
+            if isinstance(plain_password, str):
+                b = plain_password.encode("utf-8")
+                if len(b) > 72:
+                    # Truncate bytes and decode safely
+                    plain_password = b[:72].decode("utf-8", errors="ignore")
+        return pwd_context.verify(plain_password, hashed_password)
+    except ValueError:
+        # In case an unexpected ValueError still bubbles up from backend, return False
+        return False
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    """Hash a password for storage.
+
+    If bcrypt is the configured scheme, truncate the input to 72 bytes to avoid
+    ValueError from the underlying bcrypt library for very long inputs.
+    """
+    try:
+        if isinstance(password, str):
+            b = password.encode("utf-8")
+            if len(b) > 72:
+                password = b[:72].decode("utf-8", errors="ignore")
+        return pwd_context.hash(password)
+    except ValueError:
+        # Surface predictable behavior: raise a clear error for callers
+        raise ValueError("Password is too long after encoding; truncate to 72 bytes before hashing")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
