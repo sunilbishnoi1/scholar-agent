@@ -4,12 +4,10 @@
 
 An intelligent, multi-agent platform designed to automate the academic literature review process. Scholar Agent transforms a simple research question into a fully synthesized report, complete with identified research gaps, in a fraction of the time it takes to do manually.
 
-**Live Demo:** [**https://scholar-agent.vercel.app/**](https://scholar-agent.vercel.app/)  **OR**  [**https://scholaragent.dpdns.org/**](https://scholaragent.dpdns.org/) (this link might sometime show https security issue)
+**Live Demo:** [**https://scholar-agent.vercel.app/**](https://scholar-agent.vercel.app/)  **OR**  [**https://scholaragent.dpdns.org/**](https://scholaragent.dpdns.org/)
 
 
 ## 🧑‍💻 Author Information
-
-This project was built as part of the AI Agent assignment.
 
 *   **Name:** Sunil Bishnoi
 *   **Roll Number:** B23ME1072
@@ -74,83 +72,6 @@ The platform is built on a modern, decoupled client-server architecture, ensurin
 | **Database & Cache**  | **PostgreSQL** (Client-Server Database), **Redis** (Celery Broker)                                       |
 | **AI & External APIs**| **Google Gemini API**, arXiv API, Semantic Scholar API, **Brevo** (Email)                               |
 | **Deployment**        | **Vercel** (Frontend), **Render** (Backend API, Celery Worker, PostgreSQL, Redis), **Docker** (Dev) |
-
-## 🚀 Getting Started: Local Development
-
-To run this project locally, follow these steps.
-
-### Prerequisites
-
-*   Node.js (v18 or later)
-*   Python (v3.9 or later)
-*   Docker and Docker Compose
-*   A code editor like VS Code
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/sunilbishnoi1/scholar-agent.git
-cd scholar-agent
-```
-
-### 2. Backend Setup (Docker)
-
-The entire backend environment (FastAPI, PostgreSQL, Redis, Celery) is containerized for easy setup.
-
-1.  **Navigate to the backend directory:**
-    ```bash
-    cd backend
-    ```
-
-2.  **Create an environment file:**
-    Create a file named `.env` in the `backend` directory and add the following environment variables.
-
-    ```env
-    # Generate a secret key with: openssl rand -hex 32
-    SECRET_KEY="your_super_secret_key"
-
-    # API Keys
-    GEMINI_API_KEY="your_google_gemini_api_key"
-    BREVO_API_KEY="your_brevo_api_key"
-    BREVO_SENDER_EMAIL="your_verified_sender_email@example.com"
-
-    # These are the default values used in docker-compose.yml.
-    # You don't need to change them for local development.
-    DATABASE_URL="postgresql://user:password@db:5432/scholaragentdb"
-    REDIS_URL="redis://redis:6379/0"
-    ```
-
-3.  **Build and run the containers:**
-    ```bash
-    docker-compose up --build
-    ```
-    The FastAPI server will be available at `http://localhost:8000`.
-
-### 3. Frontend Setup
-
-1.  **Navigate to the frontend directory:**
-    ```bash
-    # From the root directory
-    cd frontend
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-
-3.  **Create an environment file:**
-    Create a file named `.env.local` in the `frontend` directory and add the following variable:
-
-    ```env
-    VITE_API_BASE_URL=http://127.0.0.1:8000
-    ```
-
-4.  **Run the development server:**
-    ```bash
-    npm run dev
-    ```
-    The React application will be available at `http://localhost:5173`.
 
 
 ## 📄 License
