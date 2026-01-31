@@ -382,7 +382,7 @@ jobs:
       ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: production
+    # environment: production  # Uncomment if using environment-scoped secrets
 
     steps:
       - name: Checkout code
@@ -409,19 +409,18 @@ jobs:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
       - name: Deploy Frontend to Vercel (Production)
-        if: ${{ vars.VERCEL_PROD_DEPLOY_HOOK != '' }}
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
         run: |
           echo "Deploying frontend to Vercel production..."
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ vars.VERCEL_PROD_DEPLOY_HOOK }}")
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
-          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Production frontend deployment triggered successfully"
-          else
-            echo "❌ Failed to trigger production frontend deployment (HTTP $http_code)"
-            exit 1
-          fi
+          cd frontend
+          npm install --global vercel@latest
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+          echo "✅ Production frontend deployment completed successfully"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Notify deployment success
         run: |
