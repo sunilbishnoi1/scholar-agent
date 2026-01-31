@@ -19,6 +19,11 @@ from models.database import Base, User, ResearchProject, AgentPlan, PaperReferen
 from paper_retriever import PaperRetriever
 from agents.gemini_client import GeminiClient
 from agents.planner import ResearchPlannerAgent
+from services.usage_tracker import UsageTracker
+try:
+    from rag.service import RAGService
+except ImportError:
+    RAGService = None  # RAG service not available
 import auth 
 from db import get_db
 
@@ -219,6 +224,98 @@ def start_literature_review(project_id: str, max_papers: int = 50, db: Session =
 # --- App Integration ---
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(projects_router, prefix="/api", tags=["Projects"])
+
+# --- Users Router for Usage/Budget ---
+users_router = APIRouter()
+
+class UsageSummaryResponse(BaseModel):
+    user_id: str
+    tier: str
+    month: str
+    budget: dict
+    tokens: dict
+    activity: dict
+    limits: dict
+
+class BudgetCheckResponse(BaseModel):
+    allowed: bool
+    remaining_budget: float
+    current_usage: float
+    limit: float
+    usage_percent: float
+    warning: Optional[str] = None
+    error: Optional[str] = None
+
+@users_router.get("/users/me/usage", response_model=UsageSummaryResponse)
+def get_user_usage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    """Get usage summary for the current user."""
+    tracker = UsageTracker(db)
+    summary = tracker.get_usage_summary(current_user)
+    return summary
+
+@users_router.get("/users/me/budget-check", response_model=BudgetCheckResponse)
+def check_user_budget(
+    estimated_cost: float = 0.0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    """Check if user has remaining budget."""
+    tracker = UsageTracker(db)
+    result = tracker.check_budget(current_user, estimated_cost)
+    return result
+
+app.include_router(users_router, prefix="/api", tags=["Users"])
+
+# --- Search Router ---
+search_router = APIRouter()
+
+class SearchRequest(BaseModel):
+    text: str
+    top_k: int = 10
+    use_hybrid: bool = True
+
+class SearchResultItem(BaseModel):
+    chunk_id: str
+    content: str
+    paper_id: Optional[str] = None
+    paper_title: Optional[str] = None
+    chunk_type: Optional[str] = None
+    final_score: float
+
+@search_router.post("/projects/{project_id}/search", response_model=List[SearchResultItem])
+def semantic_search(
+    project_id: str,
+    request: SearchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    """Perform semantic search within a project's papers."""
+    project = db.query(ResearchProject).filter(
+        ResearchProject.id == project_id,
+        ResearchProject.user_id == current_user.id
+    ).first()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Use RAG service if available
+    if RAGService is not None:
+        rag_service = RAGService()
+        results = rag_service.search(
+            query=request.text,
+            project_id=project_id,
+            top_k=request.top_k,
+            use_hybrid=request.use_hybrid
+        )
+        return results
+    else:
+        # RAG service not available, return empty results
+        return []
+
+app.include_router(search_router, prefix="/api", tags=["Search"])
 
 @app.get("/api/health")
 def health_check():

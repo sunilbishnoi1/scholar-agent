@@ -1,9 +1,9 @@
 # SQLAlchemy models for Users, ResearchProjects, AgentPlans, PaperReferences
-from sqlalchemy import Column, String, DateTime, Text, Integer, Float, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Text, Integer, Float, ForeignKey, JSON, Date, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, date
 
 Base = declarative_base()
 
@@ -14,8 +14,12 @@ class User(Base):
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False) 
     institution = Column(String)
+    tier = Column(String, default='free')  # free, pro, enterprise
+    monthly_budget_usd = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     research_projects = relationship('ResearchProject', back_populates='user')
+    usage_records = relationship('UserUsage', back_populates='user')
+    llm_interactions = relationship('LLMInteraction', back_populates='user')
 
 
 class ResearchProject(Base):
@@ -57,3 +61,43 @@ class PaperReference(Base):
     embeddings = Column(JSON)  # vector[1536]
     relevance_score = Column(Float)
     project = relationship('ResearchProject', back_populates='paper_references')
+
+
+# UserUsage model for tracking monthly usage
+class UserUsage(Base):
+    __tablename__ = 'user_usage'
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    month = Column(Date, nullable=False)  # First day of the month
+    total_tokens = Column(Integer, default=0)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_cost_usd = Column(Float, default=0.0)
+    projects_created = Column(Integer, default=0)
+    papers_analyzed = Column(Integer, default=0)
+    llm_calls = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user = relationship('User', back_populates='usage_records')
+
+
+# LLMInteraction model for detailed LLM call logging
+class LLMInteraction(Base):
+    __tablename__ = 'llm_interactions'
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    project_id = Column(String, ForeignKey('research_projects.id'), nullable=True)
+    agent_type = Column(String)  # planner, analyzer, synthesizer, etc.
+    model = Column(String)  # gemini-2.0-flash-lite, gemini-2.0-flash, etc.
+    task_type = Column(String)  # paper_analysis, synthesis, planning, etc.
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    cost_usd = Column(Float, default=0.0)
+    latency_ms = Column(Integer, default=0)
+    prompt_preview = Column(Text)  # First N chars of prompt
+    response_preview = Column(Text)  # First N chars of response
+    success = Column(Boolean, default=True)
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user = relationship('User', back_populates='llm_interactions')

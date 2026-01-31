@@ -386,15 +386,16 @@ class TestUsageEndpoints:
     
     def test_get_usage_summary(self, authenticated_client, mock_user):
         """Test getting user usage summary."""
-        with patch('services.usage_tracker.get_usage_tracker') as mock_tracker:
-            mock_tracker.return_value.get_usage_summary.return_value = {
+        with patch('main.UsageTracker') as MockTracker:
+            mock_instance = MockTracker.return_value
+            mock_instance.get_usage_summary.return_value = {
                 "user_id": mock_user.id,
                 "tier": "free",
                 "month": "2024-01",
-                "budget": {"limit": 1.0, "used": 0.0, "remaining": 1.0},
-                "tokens": {"total": 0, "prompt": 0, "completion": 0},
-                "activity": {"projects": 0, "papers": 0},
-                "limits": {"projects_per_month": 10, "papers_per_project": 50}
+                "budget": {"limit_usd": 1.0, "used_usd": 0.0, "remaining_usd": 1.0, "usage_percent": 0.0},
+                "tokens": {"used": 0, "limit": 100000, "remaining": 100000, "usage_percent": 0, "prompt_tokens": 0, "completion_tokens": 0},
+                "activity": {"projects_created": 0, "papers_analyzed": 0, "llm_calls": 0},
+                "limits": {"monthly_budget_usd": 1.0, "monthly_tokens": 100000, "max_projects": 5, "max_papers_per_project": 30}
             }
             
             response = authenticated_client.get("/api/users/me/usage")
@@ -403,8 +404,9 @@ class TestUsageEndpoints:
     
     def test_budget_check_allowed(self, authenticated_client, mock_user):
         """Test budget check when within limits."""
-        with patch('services.usage_tracker.get_usage_tracker') as mock_tracker:
-            mock_tracker.return_value.check_budget.return_value = {
+        with patch('main.UsageTracker') as MockTracker:
+            mock_instance = MockTracker.return_value
+            mock_instance.check_budget.return_value = {
                 "allowed": True,
                 "remaining_budget": 0.9,
                 "current_usage": 0.1,
@@ -428,8 +430,9 @@ class TestSearchEndpoints:
     
     def test_semantic_search_success(self, authenticated_client, mock_project):
         """Test semantic search within a project."""
-        with patch('rag.get_rag_service') as mock_rag:
-            mock_rag.return_value.search.return_value = [
+        with patch('main.RAGService') as MockRAG:
+            mock_instance = MockRAG.return_value
+            mock_instance.search.return_value = [
                 {
                     "chunk_id": "chunk-1",
                     "content": "Test content",
