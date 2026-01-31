@@ -409,7 +409,7 @@ jobs:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
       - name: Deploy Frontend to Vercel (Production)
-        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        if: ${{ vars.VERCEL_PROJECT_ID != '' }}
         run: |
           echo "Deploying frontend to Vercel production..."
           cd frontend
