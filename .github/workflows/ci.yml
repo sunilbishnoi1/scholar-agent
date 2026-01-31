@@ -416,7 +416,6 @@ jobs:
 
       - name: Deploy Frontend to Vercel (Production)
         if: ${{ vars.VERCEL_DEPLOY_ENABLED == 'true' }}
-        working-directory: ./frontend
         run: |
           echo "Installing Vercel CLI..."
           npm install -g vercel@latest
