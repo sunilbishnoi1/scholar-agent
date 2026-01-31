@@ -408,16 +408,25 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
+      - name: Setup Node.js for Vercel CLI
+        if: ${{ vars.VERCEL_DEPLOY_ENABLED == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Deploy Frontend to Vercel (Production)
         if: ${{ vars.VERCEL_DEPLOY_ENABLED == 'true' }}
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: "--prod"
-          working-directory: ./frontend
+        working-directory: ./frontend
+        run: |
+          echo "Installing Vercel CLI..."
+          npm install -g vercel@latest
+
+          echo "Deploying frontend to Vercel production..."
+          vercel deploy --prod --yes \
+            --token "${{ secrets.VERCEL_TOKEN }}"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Notify deployment success
         run: |
