@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, APIRouter, status
+from fastapi import FastAPI, HTTPException, Depends, APIRouter, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session, joinedload
+from sqlalchemy.orm import Session, joinedload
 from celery import Celery
 import logging
 import re
@@ -25,16 +25,7 @@ try:
 except ImportError:
     RAGService = None  # RAG service not available
 import auth 
-from db import get_db
-
-# Database setup
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in DATABASE_URL else {}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Base.metadata.create_all(bind=engine)
+from db import get_db, engine, SessionLocal
 
 def create_db_and_tables():
     try:
@@ -60,12 +51,23 @@ origins = [
     "http://localhost:5173",          
 ]
 
+# Global exception handler to ensure CORS headers are always sent
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+# CORS middleware must be added AFTER exception handlers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # def get_db():

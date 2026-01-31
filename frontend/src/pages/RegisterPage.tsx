@@ -196,7 +196,7 @@ const RegisterPage: React.FC = () => {
             <Box textAlign="center" sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 Note: our backend may be asleep on the free tier — the first
-                request can take a few seconds (up to ~10s).
+                request can take a few seconds (up to ~50s).
               </Typography>
             </Box>
           </Box>
