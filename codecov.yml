@@ -3,7 +3,13 @@
 
 codecov:
   require_ci_to_pass: true
-  max_report_age: 24h
+  max_report_age: false # Disable report age check to prevent "exceeds max age" errors
+
+# Path fixing: Coverage runs from backend/ directory, so paths in coverage.xml
+# are relative to backend/ (e.g., "main.py"). We need to prepend "backend/"
+# so Codecov can map them to the repo structure (e.g., "backend/main.py").
+fixes:
+  - "::backend/" # Prepend "backend/" to all paths
 
 coverage:
   precision: 2

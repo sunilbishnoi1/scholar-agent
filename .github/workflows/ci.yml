@@ -81,8 +81,8 @@ jobs:
         run: |
           pytest tests/ -v \
             --cov=. \
-            --cov-report=xml \
-            --cov-report=html \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
             --cov-report=term-missing \
             --cov-fail-under=0 \
             -m "not integration and not slow" \
@@ -95,15 +95,25 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           REDIS_URL: "redis://localhost:6379/0"
 
+      - name: Verify coverage file
+        run: |
+          echo "=== Coverage file location ==="
+          ls -la backend/coverage.xml || echo "coverage.xml not found in backend/"
+          echo ""
+          echo "=== First 30 lines of coverage.xml ==="
+          head -30 backend/coverage.xml || echo "Could not read coverage.xml"
+          echo ""
+          echo "=== Sample file paths in coverage.xml ==="
+          grep -o 'filename="[^"]*"' backend/coverage.xml | head -10 || echo "No filename patterns found"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: backend/coverage.xml
+          files: ./backend/coverage.xml
           flags: backend-unit
           name: backend-unit-coverage
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
