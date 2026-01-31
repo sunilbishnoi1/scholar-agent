@@ -5,7 +5,7 @@ from agents.synthesizer import SynthesisExecutorAgent
 
 def test_research_planner_stub():
     agent = ResearchPlannerAgent(llm_client=None)
-    assert hasattr(agent, 'create_search_strategy')
+    assert hasattr(agent, 'generate_initial_plan')
 
 def test_paper_analyzer_stub():
     agent = PaperAnalyzerAgent(llm_client=None)
