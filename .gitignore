@@ -1,7 +1,7 @@
 
 docs/
 .env
-.github
+.github/copilot-instructions.md
 venv/
 __pycache__/
 test.db

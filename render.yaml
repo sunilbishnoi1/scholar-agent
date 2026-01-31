@@ -6,5 +6,3 @@ services:
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
     dockerCommand: ./start.sh
-    
-
