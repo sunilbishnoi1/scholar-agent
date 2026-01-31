@@ -6,6 +6,6 @@ venv/
 __pycache__/
 test.db
 *.pyc
-
+backend/scholar_agent.egg-info/
 frontend/node_modules/
 frontend/package-lock.json

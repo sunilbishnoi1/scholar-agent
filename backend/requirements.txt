@@ -35,3 +35,22 @@ resend
 
 # Markdown to HTML conversion
 markdown>=3.6
+
+# --- AI/ML Agent Dependencies ---
+# LangGraph for agent orchestration
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-google-genai>=2.0.0
+
+# Google Generative AI
+google-generativeai>=0.8.0
+
+# Embeddings
+sentence-transformers>=3.0.0
+
+# Vector store
+qdrant-client>=1.11.0
+
+# Semantic search / BM25
+rank-bm25>=0.2.2
