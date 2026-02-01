@@ -220,6 +220,23 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
+# --- Root endpoint for health checks and API discovery ---
+@app.get("/")
+def root():
+    """
+    Root endpoint for API discovery and health checks.
+    Render and other platforms may probe this endpoint.
+    """
+    return {
+        "name": "Scholar Agent API",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
+
+
 # def get_db():
 #     db = SessionLocal()
 #     try:
