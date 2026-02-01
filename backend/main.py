@@ -29,46 +29,160 @@ from db import get_db, engine, SessionLocal
 from sqlalchemy import text, inspect
 
 def create_db_and_tables():
+    """Initialize database tables and run schema migrations."""
     try:
+        # First, create all tables defined in models
         Base.metadata.create_all(bind=engine)
-        logging.info("Database tables created successfully.")
+        logging.info("Database tables created/verified successfully.")
         
-        # Run schema migrations for missing columns
+        # Run schema migrations for missing columns on existing tables
         _run_schema_migrations()
         
+        # Verify the schema is correct
+        _verify_schema()
+        
     except Exception as e:
-        logging.error(f"Error creating database tables: {e}")
-        # Depending on your needs, you might want the app to fail here
-        # or just log the error and continue.
+        logging.error(f"Error during database initialization: {e}", exc_info=True)
         raise
 
 
-def _run_schema_migrations():
-    """Add missing columns to existing tables (lightweight migration)."""
-    inspector = inspect(engine)
+def _is_postgresql() -> bool:
+    """Check if we're connected to PostgreSQL."""
+    return 'postgresql' in str(engine.url)
+
+
+def _get_existing_columns(conn, table_name: str) -> set:
+    """Get existing columns for a table, handling both PostgreSQL and SQLite."""
+    if _is_postgresql():
+        # PostgreSQL: Query information_schema with proper schema filter
+        result = conn.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = :table_name
+        """), {"table_name": table_name})
+    else:
+        # SQLite: Use pragma
+        result = conn.execute(text(f"PRAGMA table_info({table_name})"))
+        # SQLite returns: (cid, name, type, notnull, dflt_value, pk)
+        return {row[1] for row in result.fetchall()}
     
-    with engine.connect() as conn:
-        # Check and add missing columns to 'users' table
-        if 'users' in inspector.get_table_names():
-            existing_columns = {col['name'] for col in inspector.get_columns('users')}
+    return {row[0] for row in result.fetchall()}
+
+
+def _add_column_if_not_exists(conn, table_name: str, column_name: str, 
+                               column_def: str, existing_columns: set) -> bool:
+    """Add a column if it doesn't exist. Returns True if column was added or already exists."""
+    if column_name in existing_columns:
+        logging.info(f"Column '{column_name}' already exists in '{table_name}'.")
+        return True
+    
+    try:
+        if _is_postgresql():
+            # PostgreSQL 9.6+ supports IF NOT EXISTS
+            sql = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {column_def}"
+        else:
+            # SQLite doesn't support IF NOT EXISTS, but we already checked
+            sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}"
+        
+        conn.execute(text(sql))
+        logging.info(f"Successfully added column '{column_name}' to '{table_name}'.")
+        return True
+    except Exception as e:
+        # Check if error is "column already exists" (can happen in race conditions)
+        error_str = str(e).lower()
+        if 'already exists' in error_str or 'duplicate column' in error_str:
+            logging.info(f"Column '{column_name}' already exists (detected from error).")
+            return True
+        logging.error(f"Failed to add column '{column_name}' to '{table_name}': {e}")
+        return False
+
+
+def _run_schema_migrations():
+    """Add missing columns to existing tables (lightweight migration).
+    
+    This handles the case where the ORM model has new columns but the 
+    database table was created with an older schema.
+    """
+    logging.info(f"Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})")
+    
+    try:
+        # Use engine.begin() for automatic transaction commit/rollback (SQLAlchemy 2.0)
+        with engine.begin() as conn:
+            # Check if users table exists
+            if _is_postgresql():
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'users'
+                    )
+                """))
+                table_exists = result.scalar()
+            else:
+                result = conn.execute(text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+                ))
+                table_exists = result.fetchone() is not None
             
-            # Add 'tier' column if missing
-            if 'tier' not in existing_columns:
-                try:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN tier VARCHAR DEFAULT 'free'"))
-                    conn.commit()
-                    logging.info("Added 'tier' column to users table.")
-                except Exception as e:
-                    logging.warning(f"Could not add 'tier' column: {e}")
+            if not table_exists:
+                logging.info("Users table does not exist yet, skipping migrations.")
+                return
             
-            # Add 'monthly_budget_usd' column if missing
-            if 'monthly_budget_usd' not in existing_columns:
-                try:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN monthly_budget_usd FLOAT DEFAULT 1.0"))
-                    conn.commit()
-                    logging.info("Added 'monthly_budget_usd' column to users table.")
-                except Exception as e:
-                    logging.warning(f"Could not add 'monthly_budget_usd' column: {e}")
+            # Get existing columns
+            existing_columns = _get_existing_columns(conn, 'users')
+            logging.info(f"Existing columns in 'users' table: {existing_columns}")
+            
+            if not existing_columns:
+                logging.warning("No columns found in users table, this is unexpected.")
+                return
+            
+            # Define migrations: (column_name, column_definition)
+            migrations = [
+                ('tier', "VARCHAR(50) DEFAULT 'free'"),
+                ('monthly_budget_usd', "DOUBLE PRECISION DEFAULT 1.0"),  # DOUBLE PRECISION is PostgreSQL's FLOAT
+            ]
+            
+            # For SQLite, use different type names
+            if not _is_postgresql():
+                migrations = [
+                    ('tier', "VARCHAR(50) DEFAULT 'free'"),
+                    ('monthly_budget_usd', "REAL DEFAULT 1.0"),  # SQLite uses REAL for floats
+                ]
+            
+            success_count = 0
+            for column_name, column_def in migrations:
+                if _add_column_if_not_exists(conn, 'users', column_name, column_def, existing_columns):
+                    success_count += 1
+            
+            logging.info(f"Schema migrations completed: {success_count}/{len(migrations)} columns processed.")
+        
+        # Transaction is auto-committed when exiting begin() context successfully
+        
+    except Exception as e:
+        logging.error(f"Schema migration failed: {e}", exc_info=True)
+        raise  # Re-raise to prevent app from starting with broken schema
+
+
+def _verify_schema():
+    """Verify that all required columns exist after migrations."""
+    required_columns = {'id', 'email', 'name', 'hashed_password', 'tier', 'monthly_budget_usd', 'created_at'}
+    
+    try:
+        with engine.connect() as conn:
+            existing_columns = _get_existing_columns(conn, 'users')
+            
+            missing = required_columns - existing_columns
+            if missing:
+                logging.error(f"SCHEMA VERIFICATION FAILED! Missing columns in 'users' table: {missing}")
+                logging.error(f"Existing columns: {existing_columns}")
+                raise RuntimeError(f"Database schema verification failed. Missing columns: {missing}")
+            
+            logging.info(f"Schema verification passed. All required columns present: {required_columns}")
+            
+    except Exception as e:
+        logging.error(f"Schema verification error: {e}", exc_info=True)
+        raise
 
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
