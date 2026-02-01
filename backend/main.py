@@ -5,6 +5,10 @@ import re
 import time
 import uuid
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
 
 import markdown
 from celery import Celery

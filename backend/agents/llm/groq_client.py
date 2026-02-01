@@ -2,10 +2,6 @@
 # Implementation of the BaseLLMClient for Groq's API
 # Groq offers very fast inference with generous free tier (30 RPM)
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 import os
 import threading

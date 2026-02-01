@@ -2,10 +2,6 @@
 # Implementation of the BaseLLMClient for Google's Gemini API
 # Refactored from the original gemini_client.py for the new provider architecture
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 import os
 import time

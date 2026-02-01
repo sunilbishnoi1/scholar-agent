@@ -2,10 +2,6 @@
 # Central factory for creating LLM clients based on configuration
 # This is the main entry point for getting an LLM client
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 import os
 from enum import Enum
