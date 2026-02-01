@@ -326,7 +326,7 @@ jobs:
     needs: [test-backend-unit, build-frontend]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: staging
+    # environment: staging  # Uncomment if using environment-scoped secrets
 
     steps:
       - name: Checkout code

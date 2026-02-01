@@ -563,8 +563,8 @@ def send_completion_email(user_email: str, user_name: str, project_title: str, s
 def run_literature_review(self, project_id: str, max_papers: int):
     """Execute the full literature review pipeline as a Celery background task."""
     from agents.analyzer import PaperAnalyzerAgent
-    from agents.synthesizer import SynthesisExecutorAgent
     from agents.llm import get_llm_client
+    from agents.synthesizer import SynthesisExecutorAgent
 
     # Create a fresh DB engine/session for this Celery worker process
     task_engine = create_engine(
