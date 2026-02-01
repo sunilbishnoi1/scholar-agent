@@ -26,16 +26,49 @@ except ImportError:
     RAGService = None  # RAG service not available
 import auth 
 from db import get_db, engine, SessionLocal
+from sqlalchemy import text, inspect
 
 def create_db_and_tables():
     try:
         Base.metadata.create_all(bind=engine)
         logging.info("Database tables created successfully.")
+        
+        # Run schema migrations for missing columns
+        _run_schema_migrations()
+        
     except Exception as e:
         logging.error(f"Error creating database tables: {e}")
         # Depending on your needs, you might want the app to fail here
         # or just log the error and continue.
         raise
+
+
+def _run_schema_migrations():
+    """Add missing columns to existing tables (lightweight migration)."""
+    inspector = inspect(engine)
+    
+    with engine.connect() as conn:
+        # Check and add missing columns to 'users' table
+        if 'users' in inspector.get_table_names():
+            existing_columns = {col['name'] for col in inspector.get_columns('users')}
+            
+            # Add 'tier' column if missing
+            if 'tier' not in existing_columns:
+                try:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN tier VARCHAR DEFAULT 'free'"))
+                    conn.commit()
+                    logging.info("Added 'tier' column to users table.")
+                except Exception as e:
+                    logging.warning(f"Could not add 'tier' column: {e}")
+            
+            # Add 'monthly_budget_usd' column if missing
+            if 'monthly_budget_usd' not in existing_columns:
+                try:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN monthly_budget_usd FLOAT DEFAULT 1.0"))
+                    conn.commit()
+                    logging.info("Added 'monthly_budget_usd' column to users table.")
+                except Exception as e:
+                    logging.warning(f"Could not add 'monthly_budget_usd' column: {e}")
 
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")

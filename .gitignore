@@ -5,6 +5,7 @@ docs/
 venv/
 __pycache__/
 test.db
+test_api.db
 *.pyc
 backend/scholar_agent.egg-info/
 frontend/node_modules/
