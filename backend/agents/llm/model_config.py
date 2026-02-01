@@ -2,9 +2,8 @@
 # Centralized configuration for all supported LLM models across providers
 # This makes it easy to add new models or update pricing
 
-from enum import Enum
 from dataclasses import dataclass
-from typing import Dict, Optional
+from enum import Enum
 
 
 class ModelTier(str, Enum):
@@ -13,7 +12,7 @@ class ModelTier(str, Enum):
     Used by the router to select appropriate models for tasks.
     """
     FAST_CHEAP = "fast_cheap"       # Simple tasks, lowest cost
-    BALANCED = "balanced"            # Most tasks, balanced cost/performance  
+    BALANCED = "balanced"            # Most tasks, balanced cost/performance
     POWERFUL = "powerful"            # Complex reasoning, highest quality
 
 
@@ -28,7 +27,7 @@ class ModelConfig:
     base_latency_ms: int               # Estimated base latency
     context_window: int                # Max context window size
     supports_streaming: bool = True    # Whether streaming is supported
-    
+
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """Estimate cost for a request."""
         input_cost = (input_tokens / 1000) * self.cost_per_1k_input
@@ -45,7 +44,7 @@ class ModelConfig:
 # Note: llama-3.1-8b-instant has MUCH higher daily limits (14.4K vs 1K)
 # =============================================================================
 
-GROQ_MODELS: Dict[ModelTier, ModelConfig] = {
+GROQ_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.FAST_CHEAP: ModelConfig(
         name="llama-3.1-8b-instant",      # Best for high volume: 14.4K RPD!
         provider="groq",
@@ -81,7 +80,7 @@ GROQ_MODELS: Dict[ModelTier, ModelConfig] = {
 # Google's Gemini models
 # =============================================================================
 
-GEMINI_MODELS: Dict[ModelTier, ModelConfig] = {
+GEMINI_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.FAST_CHEAP: ModelConfig(
         name="gemini-2.0-flash-lite",
         provider="gemini",
@@ -116,7 +115,7 @@ GEMINI_MODELS: Dict[ModelTier, ModelConfig] = {
 # OPENAI MODELS (for future use)
 # =============================================================================
 
-OPENAI_MODELS: Dict[ModelTier, ModelConfig] = {
+OPENAI_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.FAST_CHEAP: ModelConfig(
         name="gpt-4o-mini",
         provider="openai",
@@ -158,7 +157,7 @@ PROVIDER_MODELS = {
 }
 
 
-def get_model_config(provider: str, tier: ModelTier) -> Optional[ModelConfig]:
+def get_model_config(provider: str, tier: ModelTier) -> ModelConfig | None:
     """
     Get model configuration for a provider and tier.
     
@@ -175,6 +174,6 @@ def get_model_config(provider: str, tier: ModelTier) -> Optional[ModelConfig]:
     return None
 
 
-def get_all_models_for_provider(provider: str) -> Dict[ModelTier, ModelConfig]:
+def get_all_models_for_provider(provider: str) -> dict[ModelTier, ModelConfig]:
     """Get all model configurations for a provider."""
     return PROVIDER_MODELS.get(provider.lower(), {})

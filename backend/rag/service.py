@@ -8,13 +8,13 @@ Provides a simplified API for:
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from .vector_store import AcademicVectorStore, get_vector_store, SearchResult
+from .chunker import SemanticChunker
 from .embeddings import EmbeddingService, get_embedding_service
-from .chunker import SemanticChunker, PaperChunk
-from .hybrid_search import HybridSearchEngine, get_search_engine, HybridSearchResult
+from .hybrid_search import HybridSearchEngine, get_search_engine
 from .reranker import CrossEncoderReranker
+from .vector_store import AcademicVectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +34,14 @@ class RAGService:
         # Search
         results = rag.search("machine learning in education", project_id="project123")
     """
-    
+
     def __init__(
         self,
-        vector_store: Optional[AcademicVectorStore] = None,
-        embedding_service: Optional[EmbeddingService] = None,
-        search_engine: Optional[HybridSearchEngine] = None,
-        chunker: Optional[SemanticChunker] = None,
-        reranker: Optional[CrossEncoderReranker] = None,
+        vector_store: AcademicVectorStore | None = None,
+        embedding_service: EmbeddingService | None = None,
+        search_engine: HybridSearchEngine | None = None,
+        chunker: SemanticChunker | None = None,
+        reranker: CrossEncoderReranker | None = None,
     ):
         """
         Initialize the RAG service.
@@ -58,40 +58,40 @@ class RAGService:
         self.search_engine = search_engine
         self.chunker = chunker or SemanticChunker()
         self.reranker = reranker or CrossEncoderReranker(use_llm_reranker=True)
-        
+
         # Lazy initialization
         self._initialized = False
-        
+
         logger.info("RAGService created (lazy initialization)")
 
     def _ensure_initialized(self):
         """Ensure all services are initialized."""
         if self._initialized:
             return
-        
+
         try:
             if self.vector_store is None:
                 self.vector_store = get_vector_store()
-            
+
             if self.embedding_service is None:
                 self.embedding_service = get_embedding_service()
-            
+
             if self.search_engine is None:
                 self.search_engine = get_search_engine()
-            
+
             self._initialized = True
             logger.info("RAGService fully initialized")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize RAG services: {e}")
             raise
 
     def ingest_papers(
         self,
-        papers: List[Dict],
+        papers: list[dict],
         project_id: str,
         rebuild_bm25: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Ingest papers into the RAG system.
         
@@ -104,18 +104,18 @@ class RAGService:
             Dict with ingestion statistics
         """
         self._ensure_initialized()
-        
+
         if not papers:
             return {"chunks_ingested": 0, "papers_processed": 0}
-        
+
         logger.info(f"Ingesting {len(papers)} papers for project {project_id}")
-        
+
         # Chunk papers
         all_chunks = self.chunker.chunk_papers(papers)
-        
+
         # Ingest into vector store
         chunks_ingested = self.vector_store.ingest_chunks(all_chunks, project_id)
-        
+
         # Build BM25 index
         if rebuild_bm25 and self.search_engine:
             documents = [
@@ -130,15 +130,15 @@ class RAGService:
                 for chunk in all_chunks
             ]
             self.search_engine.index_project_documents(project_id, documents)
-        
+
         stats = {
             "chunks_ingested": chunks_ingested,
             "papers_processed": len(papers),
             "avg_chunks_per_paper": chunks_ingested / max(len(papers), 1),
         }
-        
+
         logger.info(f"Ingestion complete: {stats}")
-        
+
         return stats
 
     def search(
@@ -148,8 +148,8 @@ class RAGService:
         top_k: int = 10,
         use_hybrid: bool = True,
         use_reranker: bool = True,
-        chunk_types: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        chunk_types: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Search for relevant content.
         
@@ -165,9 +165,9 @@ class RAGService:
             List of search results as dictionaries
         """
         self._ensure_initialized()
-        
+
         logger.debug(f"Searching for '{query[:50]}...' in project {project_id}")
-        
+
         if use_hybrid and self.search_engine:
             # Use hybrid search
             results = self.search_engine.search(
@@ -193,7 +193,7 @@ class RAGService:
         paper_id: str,
         project_id: str,
         top_k: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Find papers similar to a given paper.
         
@@ -206,7 +206,7 @@ class RAGService:
             List of similar paper results
         """
         self._ensure_initialized()
-        
+
         # First, get the abstract of the source paper
         results = self.vector_store.search(
             query="",  # Will be overridden
@@ -214,18 +214,18 @@ class RAGService:
             top_k=1,
             chunk_types=["abstract"],
         )
-        
+
         # Filter to find source paper's abstract
         source_abstract = None
         for r in results:
             if r.paper_id == paper_id:
                 source_abstract = r.content
                 break
-        
+
         if not source_abstract:
             logger.warning(f"Could not find abstract for paper {paper_id}")
             return []
-        
+
         # Search using the abstract as query
         results = self.search(
             query=source_abstract,
@@ -234,19 +234,19 @@ class RAGService:
             use_hybrid=True,
             chunk_types=["abstract"],
         )
-        
+
         # Filter out the source paper and deduplicate
         seen_papers = {paper_id}
         similar_papers = []
-        
+
         for result in results:
             if result["paper_id"] not in seen_papers:
                 seen_papers.add(result["paper_id"])
                 similar_papers.append(result)
-                
+
                 if len(similar_papers) >= top_k:
                     break
-        
+
         return similar_papers
 
     def get_context_for_synthesis(
@@ -271,7 +271,7 @@ class RAGService:
             Formatted context string
         """
         self._ensure_initialized()
-        
+
         # Search with high recall
         results = self.search(
             query=research_question,
@@ -280,35 +280,35 @@ class RAGService:
             use_hybrid=True,
             use_reranker=True,
         )
-        
+
         # Format context with source tracking
         context_parts = []
         total_chars = 0
         char_limit = max_tokens * 4  # Approximate chars from tokens
-        
+
         for i, result in enumerate(results, 1):
             content = result["content"]
             paper_title = result.get("paper_title", "Unknown")
             chunk_type = result.get("chunk_type", "general")
-            
+
             # Create formatted entry
             entry = f"\n[Source {i}: {paper_title} ({chunk_type})]\n{content}\n"
-            
+
             if total_chars + len(entry) > char_limit:
                 break
-            
+
             context_parts.append(entry)
             total_chars += len(entry)
-        
+
         context = "".join(context_parts)
-        
+
         logger.debug(
             f"Retrieved {len(context_parts)} chunks ({total_chars} chars) for synthesis"
         )
-        
+
         return context
 
-    def delete_project_data(self, project_id: str) -> Dict[str, Any]:
+    def delete_project_data(self, project_id: str) -> dict[str, Any]:
         """
         Delete all RAG data for a project.
         
@@ -319,19 +319,19 @@ class RAGService:
             Dict with deletion stats
         """
         self._ensure_initialized()
-        
+
         logger.info(f"Deleting RAG data for project {project_id}")
-        
+
         # Delete from vector store
         self.vector_store.delete_project_data(project_id)
-        
+
         # Clear BM25 index
         if self.search_engine:
             self.search_engine.clear_project_index(project_id)
-        
+
         return {"project_id": project_id, "deleted": True}
 
-    def get_project_stats(self, project_id: str) -> Dict[str, Any]:
+    def get_project_stats(self, project_id: str) -> dict[str, Any]:
         """
         Get RAG statistics for a project.
         
@@ -342,17 +342,17 @@ class RAGService:
             Dict with project statistics
         """
         self._ensure_initialized()
-        
+
         return self.vector_store.get_project_stats(project_id)
 
-    def get_embedding_stats(self) -> Dict[str, Any]:
+    def get_embedding_stats(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         self._ensure_initialized()
         return self.embedding_service.get_stats()
 
 
 # Singleton instance
-_rag_service: Optional[RAGService] = None
+_rag_service: RAGService | None = None
 
 
 def get_rag_service() -> RAGService:

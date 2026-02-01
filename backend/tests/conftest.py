@@ -1,8 +1,8 @@
 # Pytest Configuration and Shared Fixtures
 # Common test fixtures and configuration for the test suite
 
-import sys
 import os
+import sys
 
 # Set test database URL BEFORE importing any app modules
 # This ensures SQLite is used instead of PostgreSQL during tests
@@ -11,11 +11,12 @@ os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 # Add the backend directory to the Python path for test imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, MagicMock
-from typing import Generator
+from collections.abc import Generator
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, Mock
+
+import pytest
 
 # Configure pytest-asyncio
 pytest_plugins = ['pytest_asyncio']
@@ -55,15 +56,16 @@ def in_memory_db():
     """Create an in-memory SQLite database for integration tests."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     from models.database import Base
-    
+
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
     session = Session()
-    
+
     yield session
-    
+
     session.close()
     engine.dispose()
 

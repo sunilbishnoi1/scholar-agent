@@ -105,6 +105,28 @@ ignore = [
     "PLR0915", # Too many statements
     "ARG001",  # Unused function argument (common in callbacks)
     "ARG002",  # Unused method argument
+    
+    # Style/formatting (handled by Black or acceptable in legacy)
+    "W291",    # Trailing whitespace
+    "W293",    # Blank line contains whitespace
+    "E402",    # Module level import not at top of file
+    
+    # Refactoring/preference (enable later if desired)
+    "PTH",     # Use pathlib (too many changes for now)
+    "RUF013",  # Implicit Optional
+    "PLC0415", # Import should be at top-level (lazy imports used frequently)
+    "PLW0603", # Global statement
+    "PLC0206", # Dict item iteration
+    "SIM",     # Simplify (too many changes)
+    "RUF012",  # Mutable class attributes
+    "RUF022",  # Unsorted __all__
+    "ERA001",  # Commented-out code
+    "E722",    # Bare except (legacy code)
+    "F841",    # Unused variable
+    "E701",    # Multiple statements on one line
+    "B905",    # zip() strict (Python 3.10+)
+    "PLW2901", # Loop variable overwritten
+    "F401",    # Unused imports (clean up later)
 ]
 
 # Allow autofix for all enabled rules
@@ -113,7 +135,21 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can have unused imports, assertions, etc.
-"tests/*" = ["S101", "ARG", "PLR2004", "F401"]
+"tests/*" = [
+    "S101", "ARG", "PLR2004", "F401",
+    "PLC0415", # Import should be at top-level
+    "B007",    # Loop control variable not used
+    "B017",    # Do not assert blind exception
+    "F841",    # Local variable assigned but never used
+    "RUF001",  # Ambiguous characters
+    "RUF002",  # Ambiguous characters
+    "RUF003",  # Ambiguous characters
+    "RUF012",  # Mutable class attributes
+    "UP035",   # Deprecated typing
+    "C401",    # Unnecessary generator
+    "RUF059",  # Unused unpacked variable
+    "SIM117",  # Use contextlib.suppress
+]
 "__init__.py" = ["F401"]  # Unused imports in __init__ files
 
 [tool.ruff.lint.isort]

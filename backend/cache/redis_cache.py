@@ -1,16 +1,18 @@
 # Redis-based Intelligent Caching for AI Operations
 # Multi-tier caching strategy for LLM responses, embeddings, and search results
 
-import redis
-import json
+import asyncio
 import hashlib
+import json
 import logging
 import os
-from typing import Optional, Any, Callable, TypeVar, Union
-from functools import wraps
-from dataclasses import dataclass, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from datetime import datetime
-import asyncio
+from functools import wraps
+from typing import Any, TypeVar
+
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +25,12 @@ class CacheStats:
     hits: int = 0
     misses: int = 0
     errors: int = 0
-    
+
     @property
     def hit_rate(self) -> float:
         total = self.hits + self.misses
         return self.hits / total if total > 0 else 0.0
-    
+
     def to_dict(self) -> dict:
         return {
             **asdict(self),
@@ -42,19 +44,19 @@ class CacheTier:
     # LLM Response Cache - short TTL for identical prompts
     LLM_RESPONSE = "llm"
     LLM_RESPONSE_TTL = 1800  # 30 minutes
-    
-    # Paper Metadata Cache - medium TTL for API responses  
+
+    # Paper Metadata Cache - medium TTL for API responses
     PAPER_METADATA = "paper"
     PAPER_METADATA_TTL = 86400  # 24 hours
-    
+
     # Embedding Cache - long TTL for computed embeddings
     EMBEDDING = "embed"
     EMBEDDING_TTL = 604800  # 7 days
-    
+
     # Search Result Cache - short TTL for search queries
     SEARCH = "search"
     SEARCH_TTL = 3600  # 1 hour
-    
+
     # User Session Cache - for model router state
     SESSION = "session"
     SESSION_TTL = 86400  # 24 hours
@@ -77,8 +79,8 @@ class IntelligentCache:
     - Statistics tracking for monitoring
     - Graceful degradation when Redis is unavailable
     """
-    
-    def __init__(self, redis_url: Optional[str] = None):
+
+    def __init__(self, redis_url: str | None = None):
         """
         Initialize the cache with Redis connection.
         
@@ -86,9 +88,9 @@ class IntelligentCache:
             redis_url: Redis connection URL (defaults to env var)
         """
         self.redis_url = redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-        self._redis: Optional[redis.Redis] = None
+        self._redis: redis.Redis | None = None
         self._connected = False
-        
+
         # Per-tier statistics
         self._stats: dict[str, CacheStats] = {
             CacheTier.LLM_RESPONSE: CacheStats(),
@@ -97,9 +99,9 @@ class IntelligentCache:
             CacheTier.SEARCH: CacheStats(),
             CacheTier.SESSION: CacheStats(),
         }
-        
+
         self._connect()
-    
+
     def _connect(self) -> bool:
         """Establish Redis connection with error handling."""
         try:
@@ -123,7 +125,7 @@ class IntelligentCache:
             logger.error(f"Unexpected Redis error: {e}")
             self._connected = False
             return False
-    
+
     @property
     def is_connected(self) -> bool:
         """Check if Redis is available."""
@@ -135,8 +137,8 @@ class IntelligentCache:
         except:
             self._connected = False
             return False
-    
-    def _make_key(self, tier: str, content: str, namespace: Optional[str] = None) -> str:
+
+    def _make_key(self, tier: str, content: str, namespace: str | None = None) -> str:
         """
         Create a cache key from content hash.
         
@@ -152,7 +154,7 @@ class IntelligentCache:
         if namespace:
             return f"scholar:{tier}:{namespace}:{content_hash}"
         return f"scholar:{tier}:{content_hash}"
-    
+
     def _serialize(self, value: Any) -> bytes:
         """Serialize value for storage."""
         try:
@@ -161,7 +163,7 @@ class IntelligentCache:
             # For non-JSON-serializable objects (like numpy arrays)
             import pickle
             return pickle.dumps(value)
-    
+
     def _deserialize(self, data: bytes) -> Any:
         """Deserialize value from storage."""
         try:
@@ -169,8 +171,8 @@ class IntelligentCache:
         except (json.JSONDecodeError, UnicodeDecodeError):
             import pickle
             return pickle.loads(data)
-    
-    def get(self, key: str, tier: str = CacheTier.LLM_RESPONSE) -> Optional[Any]:
+
+    def get(self, key: str, tier: str = CacheTier.LLM_RESPONSE) -> Any | None:
         """
         Get value from cache.
         
@@ -184,7 +186,7 @@ class IntelligentCache:
         if not self.is_connected:
             self._stats[tier].misses += 1
             return None
-        
+
         try:
             data = self._redis.get(key)
             if data:
@@ -197,11 +199,11 @@ class IntelligentCache:
             self._stats[tier].errors += 1
             self._stats[tier].misses += 1
             return None
-    
+
     def set(
-        self, 
-        key: str, 
-        value: Any, 
+        self,
+        key: str,
+        value: Any,
         ttl: int,
         tier: str = CacheTier.LLM_RESPONSE
     ) -> bool:
@@ -219,7 +221,7 @@ class IntelligentCache:
         """
         if not self.is_connected:
             return False
-        
+
         try:
             serialized = self._serialize(value)
             self._redis.setex(key, ttl, serialized)
@@ -228,7 +230,7 @@ class IntelligentCache:
             logger.error(f"Cache set error for key {key}: {e}")
             self._stats[tier].errors += 1
             return False
-    
+
     def delete(self, key: str) -> bool:
         """Delete a key from cache."""
         if not self.is_connected:
@@ -239,14 +241,14 @@ class IntelligentCache:
         except Exception as e:
             logger.error(f"Cache delete error for key {key}: {e}")
             return False
-    
+
     def get_or_compute(
         self,
         tier: str,
         content: str,
         compute_fn: Callable[[], T],
-        ttl: Optional[int] = None,
-        namespace: Optional[str] = None
+        ttl: int | None = None,
+        namespace: str | None = None
     ) -> T:
         """
         Get from cache or compute and cache result.
@@ -262,17 +264,17 @@ class IntelligentCache:
             Cached or computed value
         """
         key = self._make_key(tier, content, namespace)
-        
+
         # Try cache first
         cached = self.get(key, tier)
         if cached is not None:
             logger.debug(f"Cache hit for {tier}: {key[:50]}...")
             return cached
-        
+
         # Compute value
         logger.debug(f"Cache miss for {tier}: {key[:50]}...")
         result = compute_fn()
-        
+
         # Determine TTL
         if ttl is None:
             ttl_map = {
@@ -283,34 +285,34 @@ class IntelligentCache:
                 CacheTier.SESSION: CacheTier.SESSION_TTL,
             }
             ttl = ttl_map.get(tier, 3600)
-        
+
         # Cache result
         self.set(key, result, ttl, tier)
-        
+
         return result
-    
+
     async def get_or_compute_async(
         self,
         tier: str,
         content: str,
         compute_fn: Callable[[], Any],
-        ttl: Optional[int] = None,
-        namespace: Optional[str] = None
+        ttl: int | None = None,
+        namespace: str | None = None
     ) -> Any:
         """Async version of get_or_compute."""
         key = self._make_key(tier, content, namespace)
-        
+
         # Try cache first
         cached = self.get(key, tier)
         if cached is not None:
             return cached
-        
+
         # Compute value (handle both sync and async functions)
         if asyncio.iscoroutinefunction(compute_fn):
             result = await compute_fn()
         else:
             result = compute_fn()
-        
+
         # Determine TTL
         if ttl is None:
             ttl_map = {
@@ -321,16 +323,16 @@ class IntelligentCache:
                 CacheTier.SESSION: CacheTier.SESSION_TTL,
             }
             ttl = ttl_map.get(tier, 3600)
-        
+
         # Cache result
         self.set(key, result, ttl, tier)
-        
+
         return result
-    
+
     # =========================================================================
     # Decorator-based caching for common patterns
     # =========================================================================
-    
+
     def cache_llm_response(self, ttl: int = CacheTier.LLM_RESPONSE_TTL):
         """
         Decorator to cache LLM responses.
@@ -344,123 +346,123 @@ class IntelligentCache:
             @wraps(func)
             def wrapper(prompt: str, *args, **kwargs) -> Any:
                 key = self._make_key(CacheTier.LLM_RESPONSE, prompt)
-                
+
                 cached = self.get(key, CacheTier.LLM_RESPONSE)
                 if cached is not None:
                     logger.debug(f"LLM cache hit for prompt: {prompt[:50]}...")
                     return cached
-                
+
                 result = func(prompt, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.LLM_RESPONSE)
                 return result
-            
+
             @wraps(func)
             async def async_wrapper(prompt: str, *args, **kwargs) -> Any:
                 key = self._make_key(CacheTier.LLM_RESPONSE, prompt)
-                
+
                 cached = self.get(key, CacheTier.LLM_RESPONSE)
                 if cached is not None:
                     return cached
-                
+
                 result = await func(prompt, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.LLM_RESPONSE)
                 return result
-            
+
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
         return decorator
-    
+
     def cache_embedding(self, ttl: int = CacheTier.EMBEDDING_TTL):
         """Decorator to cache embeddings (long TTL)."""
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(text: str, *args, **kwargs) -> Any:
                 key = self._make_key(CacheTier.EMBEDDING, text)
-                
+
                 cached = self.get(key, CacheTier.EMBEDDING)
                 if cached is not None:
                     return cached
-                
+
                 result = func(text, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.EMBEDDING)
                 return result
-            
+
             @wraps(func)
             async def async_wrapper(text: str, *args, **kwargs) -> Any:
                 key = self._make_key(CacheTier.EMBEDDING, text)
-                
+
                 cached = self.get(key, CacheTier.EMBEDDING)
                 if cached is not None:
                     return cached
-                
+
                 result = await func(text, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.EMBEDDING)
                 return result
-            
+
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
         return decorator
-    
-    def cache_search(self, ttl: int = CacheTier.SEARCH_TTL, namespace: Optional[str] = None):
+
+    def cache_search(self, ttl: int = CacheTier.SEARCH_TTL, namespace: str | None = None):
         """Decorator to cache search results."""
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(query: str, *args, **kwargs) -> Any:
                 # Include relevant kwargs in cache key
-                cache_content = f"{query}:{str(args)}:{str(kwargs)}"
+                cache_content = f"{query}:{args!s}:{kwargs!s}"
                 key = self._make_key(CacheTier.SEARCH, cache_content, namespace)
-                
+
                 cached = self.get(key, CacheTier.SEARCH)
                 if cached is not None:
                     return cached
-                
+
                 result = func(query, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.SEARCH)
                 return result
-            
+
             @wraps(func)
             async def async_wrapper(query: str, *args, **kwargs) -> Any:
-                cache_content = f"{query}:{str(args)}:{str(kwargs)}"
+                cache_content = f"{query}:{args!s}:{kwargs!s}"
                 key = self._make_key(CacheTier.SEARCH, cache_content, namespace)
-                
+
                 cached = self.get(key, CacheTier.SEARCH)
                 if cached is not None:
                     return cached
-                
+
                 result = await func(query, *args, **kwargs)
                 self.set(key, result, ttl, CacheTier.SEARCH)
                 return result
-            
+
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
         return decorator
-    
+
     # =========================================================================
     # User session management (for model router state)
     # =========================================================================
-    
+
     def save_user_session(self, user_id: str, data: dict, ttl: int = CacheTier.SESSION_TTL) -> bool:
         """Save user session data (e.g., model router state)."""
         key = f"scholar:session:{user_id}"
         data["_updated_at"] = datetime.utcnow().isoformat()
         return self.set(key, data, ttl, CacheTier.SESSION)
-    
-    def get_user_session(self, user_id: str) -> Optional[dict]:
+
+    def get_user_session(self, user_id: str) -> dict | None:
         """Get user session data."""
         key = f"scholar:session:{user_id}"
         return self.get(key, CacheTier.SESSION)
-    
-    def update_user_spending(self, user_id: str, amount: float) -> Optional[float]:
+
+    def update_user_spending(self, user_id: str, amount: float) -> float | None:
         """
         Atomically update user spending and return new total.
         Uses Redis INCRBYFLOAT for atomicity.
         """
         if not self.is_connected:
             return None
-        
+
         key = f"scholar:spending:{user_id}"
         try:
             # INCRBYFLOAT returns the new value
@@ -471,63 +473,63 @@ class IntelligentCache:
         except Exception as e:
             logger.error(f"Failed to update spending for user {user_id}: {e}")
             return None
-    
+
     def get_user_spending(self, user_id: str) -> float:
         """Get current user spending."""
         if not self.is_connected:
             return 0.0
-        
+
         key = f"scholar:spending:{user_id}"
         try:
             value = self._redis.get(key)
             return float(value) if value else 0.0
         except:
             return 0.0
-    
+
     # =========================================================================
     # Pub/Sub for real-time updates
     # =========================================================================
-    
+
     def publish(self, channel: str, message: dict) -> bool:
         """Publish a message to a Redis channel."""
         if not self.is_connected:
             return False
-        
+
         try:
             self._redis.publish(channel, json.dumps(message))
             return True
         except Exception as e:
             logger.error(f"Failed to publish to {channel}: {e}")
             return False
-    
+
     def get_pubsub(self):
         """Get a pubsub object for subscribing to channels."""
         if not self.is_connected:
             return None
         return self._redis.pubsub()
-    
+
     # =========================================================================
     # Statistics and monitoring
     # =========================================================================
-    
+
     def get_stats(self) -> dict:
         """Get cache statistics for all tiers."""
         return {
-            tier: stats.to_dict() 
+            tier: stats.to_dict()
             for tier, stats in self._stats.items()
         }
-    
+
     def get_tier_stats(self, tier: str) -> dict:
         """Get statistics for a specific tier."""
         if tier in self._stats:
             return self._stats[tier].to_dict()
         return {}
-    
+
     def clear_tier(self, tier: str) -> int:
         """Clear all keys for a specific tier. Returns count of deleted keys."""
         if not self.is_connected:
             return 0
-        
+
         try:
             pattern = f"scholar:{tier}:*"
             keys = self._redis.keys(pattern)
@@ -537,7 +539,7 @@ class IntelligentCache:
         except Exception as e:
             logger.error(f"Failed to clear tier {tier}: {e}")
             return 0
-    
+
     def health_check(self) -> dict:
         """Return cache health status."""
         return {
@@ -551,7 +553,7 @@ class IntelligentCache:
 # Singleton instance
 # =========================================================================
 
-_cache_instance: Optional[IntelligentCache] = None
+_cache_instance: IntelligentCache | None = None
 
 
 def get_cache() -> IntelligentCache:

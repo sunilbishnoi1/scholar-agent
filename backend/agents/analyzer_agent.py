@@ -1,14 +1,10 @@
 # Paper Analyzer Agent (LangGraph Compatible)
 # Role: Analyzes papers for relevance and extracts key insights
 
-import json
-import re
-import logging
-from typing import Optional
 
 from agents.base import ToolEnabledAgent
-from agents.state import AgentState, AgentResult, AgentType, PaperData
-from agents.tools import score_paper_relevance, extract_paper_insights
+from agents.state import AgentResult, AgentState, AgentType
+from agents.tools import extract_paper_insights, score_paper_relevance
 
 
 class PaperAnalyzerAgent(ToolEnabledAgent):
@@ -20,11 +16,11 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
     
     Uses the ReAct pattern for each paper analysis.
     """
-    
+
     def __init__(self, llm_client):
         super().__init__(llm_client, name="analyzer")
         self._register_tools()
-    
+
     def _register_tools(self):
         """Register the tools this agent can use."""
         self.register_tool(
@@ -37,7 +33,7 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
             lambda **kwargs: extract_paper_insights(self.llm_client, **kwargs),
             "Extract detailed insights from a paper"
         )
-    
+
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the analyzer agent.
@@ -56,30 +52,30 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
             Updated state with analyzed papers
         """
         self._log_start(state)
-        
+
         try:
             state["current_agent"] = AgentType.ANALYZER
-            
+
             papers = state.get("papers", [])
             research_question = state["research_question"]
             relevance_threshold = state.get("relevance_threshold", 60.0)
-            
+
             if not papers:
                 self.logger.warning("No papers to analyze")
                 state["errors"].append("No papers available for analysis")
                 return state
-            
+
             analyzed_papers = []
             high_quality_papers = []
-            
+
             for i, paper in enumerate(papers):
                 self.logger.info(f"Analyzing paper {i+1}/{len(papers)}: {paper['title'][:50]}...")
-                
+
                 # Skip papers without abstract
                 if not paper.get("abstract"):
                     self.logger.warning(f"Skipping paper without abstract: {paper['title']}")
                     continue
-                
+
                 # Score relevance
                 relevance_result = await self.invoke_tool(
                     "score_relevance",
@@ -87,17 +83,17 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                     abstract=paper["abstract"],
                     research_question=research_question
                 )
-                
+
                 relevance_score = 0.0
                 justification = ""
-                
+
                 if relevance_result.success:
                     relevance_score = relevance_result.data.get("score", 0)
                     justification = relevance_result.data.get("justification", "")
-                
+
                 # Update paper with relevance score
                 paper["relevance_score"] = relevance_score
-                
+
                 # Only extract detailed insights for relevant papers
                 if relevance_score >= relevance_threshold:
                     insights_result = await self.invoke_tool(
@@ -106,7 +102,7 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                         abstract=paper["abstract"],
                         research_question=research_question
                     )
-                    
+
                     if insights_result.success:
                         paper["analysis"] = {
                             "relevance_score": relevance_score,
@@ -127,22 +123,22 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                         "skipped": True,
                         "reason": "Below relevance threshold"
                     }
-                
+
                 analyzed_papers.append(paper)
-                
+
                 # Rate limiting - avoid overwhelming the LLM
                 import asyncio
                 await asyncio.sleep(1.0)
-            
+
             # Update state
             state["analyzed_papers"] = analyzed_papers
             state["high_quality_papers"] = high_quality_papers
-            
+
             state["messages"] = [self._create_message(
                 "analyze_papers",
                 f"Analyzed {len(analyzed_papers)} papers, {len(high_quality_papers)} above threshold"
             )]
-            
+
             result = AgentResult(
                 success=True,
                 data={
@@ -155,12 +151,12 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                 }
             )
             self._log_complete(state, result)
-            
+
             return state
-            
+
         except Exception as e:
             return self._handle_error(state, e)
-    
+
     # Legacy method for backward compatibility
     def analyze_paper(self, title: str, abstract: str, content: str, research_question: str) -> str:
         """

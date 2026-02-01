@@ -6,6 +6,7 @@ Run with: python test_rag_e2e.py
 
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -22,10 +23,11 @@ if not os.environ.get("GEMINI_API_KEY"):
 
 from rag import get_rag_service
 
+
 def test_rag_pipeline():
     """Test the complete RAG pipeline."""
     print("🚀 Testing RAG Pipeline End-to-End\n")
-    
+
     # Sample papers
     papers = [
         {
@@ -47,21 +49,21 @@ def test_rag_pipeline():
             "authors": ["David Lee", "Emma Wilson"],
         },
     ]
-    
+
     project_id = "test_project_e2e"
-    
+
     try:
         # Initialize RAG service
         print("1️⃣  Initializing RAG service...")
         rag = get_rag_service()
         print("   ✓ RAG service initialized\n")
-        
+
         # Ingest papers
         print("2️⃣  Ingesting papers...")
         stats = rag.ingest_papers(papers, project_id=project_id, rebuild_bm25=True)
         print(f"   ✓ Ingested {stats['chunks_ingested']} chunks from {stats['papers_processed']} papers")
         print(f"   ✓ Average: {stats['avg_chunks_per_paper']:.1f} chunks/paper\n")
-        
+
         # Vector-only search
         print("3️⃣  Testing vector-only search...")
         results = rag.search(
@@ -74,7 +76,7 @@ def test_rag_pipeline():
         print(f"   ✓ Found {len(results)} results (vector-only)")
         if results:
             print(f"   Top result: {results[0]['paper_title'][:50]}... (score: {results[0].get('score', 0):.3f})\n")
-        
+
         # Hybrid search
         print("4️⃣  Testing hybrid search (vector + BM25)...")
         results = rag.search(
@@ -88,27 +90,27 @@ def test_rag_pipeline():
         for i, r in enumerate(results[:3], 1):
             print(f"   [{i}] {r['paper_title'][:40]}... | Score: {r.get('final_score', r.get('score', 0)):.3f}")
         print()
-        
+
         # Get project stats
         print("5️⃣  Checking project statistics...")
         stats = rag.get_project_stats(project_id)
         print(f"   ✓ Total chunks in project: {stats.get('total_chunks', 0)}\n")
-        
+
         # Embedding stats
         print("6️⃣  Checking embedding cache stats...")
         embed_stats = rag.get_embedding_stats()
         print(f"   ✓ Total requests: {embed_stats.get('total_requests', 0)}")
         print(f"   ✓ Cache hits: {embed_stats.get('cache_hits', 0)}")
         print(f"   ✓ Cache hit rate: {embed_stats.get('cache_hit_rate', 0):.1%}\n")
-        
+
         # Cleanup
         print("7️⃣  Cleaning up test data...")
         rag.delete_project_data(project_id)
         print("   ✓ Test data deleted\n")
-        
+
         print("✅ All RAG pipeline tests passed!")
         return True
-        
+
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback

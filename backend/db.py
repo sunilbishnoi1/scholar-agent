@@ -1,6 +1,7 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import os
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
 
@@ -21,4 +22,4 @@ def get_db():
         db.close()
 
 # Exports
-__all__ = ["engine", "SessionLocal", "get_db"]
+__all__ = ["SessionLocal", "engine", "get_db"]

@@ -1,10 +1,11 @@
-import requests
+import logging
+import re
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-import re
-import logging
-import time 
+
+import requests
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -61,7 +62,7 @@ class PaperRetriever:
             response = requests.get(self.semantic_scholar_base_url, params=params, timeout=15)
             response.raise_for_status()
             results = response.json()
-            
+
             for item in results.get('data', []):
                 if item.get('title') and item.get('abstract') and item.get('url'):
                     papers.append({
@@ -85,15 +86,15 @@ class PaperRetriever:
             return []
 
         logging.info(f"Received search terms: {search_terms}")
-        
+
         # Calculate how many papers to fetch per search term from each source
         papers_per_query = max(1, max_papers // (len(search_terms) * 2)) if search_terms else 0
-        
+
         all_papers = []
         for term in search_terms:
             term = term.strip().replace('"', '')
             if not term: continue
-            
+
             all_papers.extend(self._search_arxiv(term, papers_per_query))
             time.sleep(2.5) # Wait 1.5 seconds before the next API call
             all_papers.extend(self._search_semantic_scholar(term, papers_per_query))
@@ -106,7 +107,7 @@ class PaperRetriever:
             if normalized_title not in seen_titles:
                 seen_titles.add(normalized_title)
                 unique_papers.append(paper)
-        
+
         logging.info(f"Total papers found: {len(all_papers)}. Unique papers after de-duplication: {len(unique_papers)}")
 
         return unique_papers[:max_papers]

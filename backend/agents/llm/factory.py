@@ -3,12 +3,13 @@
 # This is the main entry point for getting an LLM client
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import os
 import logging
+import os
 from enum import Enum
-from typing import Optional, Dict, Any, Type
+from typing import Any
 
 from agents.llm.base import BaseLLMClient, LLMConfig
 
@@ -20,7 +21,7 @@ class LLMProvider(str, Enum):
     GROQ = "groq"
     GEMINI = "gemini"
     OPENAI = "openai"  # For future use
-    
+
     @classmethod
     def from_string(cls, value: str) -> "LLMProvider":
         """Convert string to provider enum."""
@@ -35,7 +36,7 @@ class LLMProvider(str, Enum):
 _default_provider: LLMProvider = LLMProvider.GROQ
 
 # Cache for client instances (singleton pattern per provider)
-_client_cache: Dict[str, BaseLLMClient] = {}
+_client_cache: dict[str, BaseLLMClient] = {}
 
 
 def get_default_provider() -> LLMProvider:
@@ -68,8 +69,8 @@ def set_default_provider(provider: LLMProvider) -> None:
 
 
 def get_llm_client(
-    provider: Optional[LLMProvider] = None,
-    config: Optional[LLMConfig] = None,
+    provider: LLMProvider | None = None,
+    config: LLMConfig | None = None,
     force_new: bool = False,
     **kwargs
 ) -> BaseLLMClient:
@@ -107,44 +108,44 @@ def get_llm_client(
     # Determine provider
     if provider is None:
         provider = get_default_provider()
-    
+
     # Build config
     if config is None:
         config = LLMConfig(**kwargs) if kwargs else LLMConfig()
-    
+
     # Cache key based on provider and user_id
     cache_key = f"{provider.value}:{config.user_id}"
-    
+
     # Return cached instance if available and not forcing new
     if not force_new and cache_key in _client_cache:
         cached = _client_cache[cache_key]
         logger.debug(f"Returning cached {provider.value} client for {config.user_id}")
         return cached
-    
+
     # Create new instance
     client = _create_client(provider, config)
-    
+
     # Cache the instance
     _client_cache[cache_key] = client
-    
+
     return client
 
 
 def _create_client(provider: LLMProvider, config: LLMConfig) -> BaseLLMClient:
     """Create a new LLM client instance."""
-    
+
     if provider == LLMProvider.GROQ:
         from agents.llm.groq_client import GroqClient
         return GroqClient(config)
-    
+
     elif provider == LLMProvider.GEMINI:
         from agents.llm.gemini import GeminiProvider
         return GeminiProvider(config)
-    
+
     elif provider == LLMProvider.OPENAI:
         # Future: implement OpenAI provider
         raise NotImplementedError("OpenAI provider not yet implemented")
-    
+
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -164,20 +165,20 @@ def get_available_providers() -> list[LLMProvider]:
         List of available providers
     """
     available = []
-    
+
     if os.environ.get("GROQ_API_KEY"):
         available.append(LLMProvider.GROQ)
-    
+
     if os.environ.get("GEMINI_API_KEY"):
         available.append(LLMProvider.GEMINI)
-    
+
     if os.environ.get("OPENAI_API_KEY"):
         available.append(LLMProvider.OPENAI)
-    
+
     return available
 
 
-def get_best_available_provider() -> Optional[LLMProvider]:
+def get_best_available_provider() -> LLMProvider | None:
     """
     Get the best available provider based on configuration.
     
@@ -191,10 +192,10 @@ def get_best_available_provider() -> Optional[LLMProvider]:
         Best available provider or None if none configured
     """
     available = get_available_providers()
-    
+
     if not available:
         return None
-    
+
     # Check env var preference
     env_provider = os.environ.get("LLM_PROVIDER", "").lower()
     if env_provider:
@@ -204,14 +205,14 @@ def get_best_available_provider() -> Optional[LLMProvider]:
                 return preferred
         except ValueError:
             pass
-    
+
     # Priority order
     priority = [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI]
-    
+
     for provider in priority:
         if provider in available:
             return provider
-    
+
     return available[0] if available else None
 
 
@@ -229,14 +230,14 @@ class GeminiClient(BaseLLMClient):
     
     For new code, use get_llm_client() instead.
     """
-    
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         user_budget: float = 1.0,
         user_id: str = "default",
         enable_router: bool = True,
-        provider: Optional[str] = None
+        provider: str | None = None
     ):
         """
         Initialize a backward-compatible client.
@@ -260,7 +261,7 @@ class GeminiClient(BaseLLMClient):
                     "No API keys configured! Set GROQ_API_KEY or GEMINI_API_KEY. "
                     "Defaulting to Groq."
                 )
-        
+
         # Build config
         config = LLMConfig(
             api_key=api_key,
@@ -268,23 +269,23 @@ class GeminiClient(BaseLLMClient):
             user_id=user_id,
             enable_router=enable_router
         )
-        
+
         # Get the actual client
         self._client = get_llm_client(provider=llm_provider, config=config, force_new=True)
         self.config = config
-        
+
         logger.info(f"GeminiClient (compat) initialized with provider: {llm_provider.value}")
-    
+
     def _setup_client(self) -> None:
         """Not used - setup handled by delegated client."""
         pass
-    
+
     def chat(
         self,
         prompt: str,
         task_type: str = "general",
-        complexity_hint: Optional[str] = None,
-        max_latency_ms: Optional[int] = None,
+        complexity_hint: str | None = None,
+        max_latency_ms: int | None = None,
         **kwargs
     ) -> str:
         """Send a chat request. Delegates to the underlying provider."""
@@ -295,13 +296,13 @@ class GeminiClient(BaseLLMClient):
             max_latency_ms=max_latency_ms,
             **kwargs
         )
-    
+
     def chat_with_response(
         self,
         prompt: str,
         task_type: str = "general",
-        complexity_hint: Optional[str] = None,
-        max_latency_ms: Optional[int] = None,
+        complexity_hint: str | None = None,
+        max_latency_ms: int | None = None,
         **kwargs
     ):
         """Send a chat request with full response. Delegates to the underlying provider."""
@@ -312,19 +313,19 @@ class GeminiClient(BaseLLMClient):
             max_latency_ms=max_latency_ms,
             **kwargs
         )
-    
+
     def get_provider_name(self) -> str:
         """Get the actual provider name being used."""
         return self._client.get_provider_name()
-    
-    def get_usage_stats(self) -> Dict[str, Any]:
+
+    def get_usage_stats(self) -> dict[str, Any]:
         """Get usage statistics."""
         return self._client.get_usage_stats()
-    
-    def reset_budget(self, new_budget: Optional[float] = None) -> None:
+
+    def reset_budget(self, new_budget: float | None = None) -> None:
         """Reset budget tracking."""
         self._client.reset_budget(new_budget)
-    
+
     def is_available(self) -> bool:
         """Check if the provider is available."""
         return self._client.is_available()

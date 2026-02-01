@@ -1,19 +1,19 @@
 # Research Orchestrator - LangGraph State Machine
 # Manages the agent pipeline and state transitions
 
-import logging
 import asyncio
-from typing import Literal, Optional, Callable
-from datetime import datetime
+import logging
+from collections.abc import Callable
+from typing import Literal
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from agents.state import AgentState, AgentType, create_initial_state
-from agents.planner_agent import ResearchPlannerAgent
-from agents.retriever_agent import PaperRetrieverAgent
 from agents.analyzer_agent import PaperAnalyzerAgent
-from agents.synthesizer_agent import SynthesisExecutorAgent
+from agents.planner_agent import ResearchPlannerAgent
 from agents.quality_checker_agent import QualityCheckerAgent
+from agents.retriever_agent import PaperRetrieverAgent
+from agents.state import AgentState, create_initial_state
+from agents.synthesizer_agent import SynthesisExecutorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +43,11 @@ class ResearchOrchestrator:
     - Comprehensive error handling
     - Progress callbacks for real-time updates
     """
-    
+
     def __init__(
         self,
         llm_client,
-        progress_callback: Optional[Callable[[str, str, float], None]] = None
+        progress_callback: Callable[[str, str, float], None] | None = None
     ):
         """
         Initialize the orchestrator.
@@ -59,19 +59,19 @@ class ResearchOrchestrator:
         """
         self.llm_client = llm_client
         self.progress_callback = progress_callback
-        
+
         # Initialize agents
         self.planner = ResearchPlannerAgent(llm_client)
         self.retriever = PaperRetrieverAgent(llm_client)
         self.analyzer = PaperAnalyzerAgent(llm_client)
         self.synthesizer = SynthesisExecutorAgent(llm_client)
         self.quality_checker = QualityCheckerAgent(llm_client)
-        
+
         # Build the graph
         self.graph = self._build_graph()
-        
+
         logger.info("ResearchOrchestrator initialized with LangGraph pipeline")
-    
+
     def _build_graph(self) -> StateGraph:
         """
         Build the LangGraph state machine.
@@ -81,23 +81,23 @@ class ResearchOrchestrator:
         """
         # Create the graph with our state type
         workflow = StateGraph(AgentState)
-        
+
         # Add nodes (each agent becomes a node)
         workflow.add_node("planner", self._run_planner)
         workflow.add_node("retriever", self._run_retriever)
         workflow.add_node("analyzer", self._run_analyzer)
         workflow.add_node("synthesizer", self._run_synthesizer)
         workflow.add_node("quality_checker", self._run_quality_checker)
-        
+
         # Define the edges (transitions between nodes)
         workflow.set_entry_point("planner")
-        
+
         # Linear flow: planner -> retriever -> analyzer -> synthesizer -> quality_checker
         workflow.add_edge("planner", "retriever")
         workflow.add_edge("retriever", "analyzer")
         workflow.add_edge("analyzer", "synthesizer")
         workflow.add_edge("synthesizer", "quality_checker")
-        
+
         # Conditional edge from quality_checker
         workflow.add_conditional_edges(
             "quality_checker",
@@ -107,35 +107,35 @@ class ResearchOrchestrator:
                 "complete": END       # End if quality is acceptable
             }
         )
-        
+
         return workflow.compile()
-    
+
     async def _run_planner(self, state: AgentState) -> AgentState:
         """Run the planner agent node."""
         self._report_progress("planner", "Creating search strategy...", 10)
         return await self.planner.run(state)
-    
+
     async def _run_retriever(self, state: AgentState) -> AgentState:
         """Run the retriever agent node."""
         self._report_progress("retriever", "Fetching papers from academic databases...", 25)
         return await self.retriever.run(state)
-    
+
     async def _run_analyzer(self, state: AgentState) -> AgentState:
         """Run the analyzer agent node."""
         paper_count = len(state.get("papers", []))
         self._report_progress("analyzer", f"Analyzing {paper_count} papers...", 50)
         return await self.analyzer.run(state)
-    
+
     async def _run_synthesizer(self, state: AgentState) -> AgentState:
         """Run the synthesizer agent node."""
         self._report_progress("synthesizer", "Synthesizing literature review...", 75)
         return await self.synthesizer.run(state)
-    
+
     async def _run_quality_checker(self, state: AgentState) -> AgentState:
         """Run the quality checker agent node."""
         self._report_progress("quality_checker", "Evaluating synthesis quality...", 90)
         return await self.quality_checker.run(state)
-    
+
     def _should_continue_or_end(self, state: AgentState) -> Literal["refine", "complete"]:
         """
         Decide whether to refine the synthesis or complete the pipeline.
@@ -151,16 +151,16 @@ class ResearchOrchestrator:
         status = state.get("status", "completed")
         iteration = state.get("iteration", 0)
         max_iterations = state.get("max_iterations", 3)
-        
+
         if status == "needs_refinement" and iteration < max_iterations:
             logger.info(f"Quality check failed, refining (iteration {iteration + 1}/{max_iterations})")
             # Increment iteration counter for next loop
             state["iteration"] = iteration + 1
             return "refine"
-        
+
         logger.info(f"Pipeline complete. Final status: {status}")
         return "complete"
-    
+
     def _report_progress(self, agent: str, message: str, percent: float):
         """Report progress through the callback if available."""
         logger.info(f"[{agent}] {message} ({percent}%)")
@@ -169,7 +169,7 @@ class ResearchOrchestrator:
                 self.progress_callback(agent, message, percent)
             except Exception as e:
                 logger.warning(f"Progress callback failed: {e}")
-    
+
     async def run(
         self,
         project_id: str,
@@ -200,7 +200,7 @@ class ResearchOrchestrator:
             Final AgentState with all results
         """
         logger.info(f"Starting literature review pipeline for project {project_id}")
-        
+
         # Create initial state
         initial_state = create_initial_state(
             project_id=project_id,
@@ -213,29 +213,29 @@ class ResearchOrchestrator:
             academic_level=academic_level,
             target_word_count=target_word_count
         )
-        
+
         self._report_progress("orchestrator", "Starting pipeline...", 0)
-        
+
         try:
             # Run the graph
             final_state = await self.graph.ainvoke(initial_state)
-            
+
             self._report_progress("orchestrator", "Pipeline complete!", 100)
-            
+
             logger.info(
                 f"Pipeline completed for project {project_id}. "
                 f"Papers analyzed: {len(final_state.get('analyzed_papers', []))}. "
                 f"Quality score: {final_state.get('quality_score', 0):.1f}"
             )
-            
+
             return final_state
-            
+
         except Exception as e:
             logger.error(f"Pipeline failed for project {project_id}: {e}", exc_info=True)
             initial_state["status"] = "error"
             initial_state["errors"].append(str(e))
             return initial_state
-    
+
     def run_sync(
         self,
         project_id: str,

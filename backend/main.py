@@ -1,32 +1,35 @@
-from fastapi import FastAPI, HTTPException, Depends, APIRouter, status, Request
+import json
+import logging
+import os
+import re
+import time
+import uuid
+from datetime import datetime, timedelta
+
+import markdown
+from celery import Celery
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session, joinedload
-from celery import Celery
-import logging
-import re
-import os
-import time
-from typing import List, Optional
-from datetime import datetime, timedelta
-import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
-import markdown
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
 
-from models.database import Base, User, ResearchProject, AgentPlan, PaperReference
-from paper_retriever import PaperRetriever
 from agents.gemini_client import GeminiClient
 from agents.planner import ResearchPlannerAgent
+from models.database import AgentPlan, Base, PaperReference, ResearchProject, User
+from paper_retriever import PaperRetriever
 from services.usage_tracker import UsageTracker
+
 try:
     from rag.service import RAGService
 except ImportError:
     RAGService = None  # RAG service not available
-import auth 
-from db import get_db, engine, SessionLocal
-from sqlalchemy import text, inspect
+import auth
+from db import engine, get_db
+
 
 def create_db_and_tables():
     """Initialize database tables and run schema migrations."""
@@ -34,13 +37,13 @@ def create_db_and_tables():
         # First, create all tables defined in models
         Base.metadata.create_all(bind=engine)
         logging.info("Database tables created/verified successfully.")
-        
+
         # Run schema migrations for missing columns on existing tables
         _run_schema_migrations()
-        
+
         # Verify the schema is correct
         _verify_schema()
-        
+
     except Exception as e:
         logging.error(f"Error during database initialization: {e}", exc_info=True)
         raise
@@ -66,17 +69,17 @@ def _get_existing_columns(conn, table_name: str) -> set:
         result = conn.execute(text(f"PRAGMA table_info({table_name})"))
         # SQLite returns: (cid, name, type, notnull, dflt_value, pk)
         return {row[1] for row in result.fetchall()}
-    
+
     return {row[0] for row in result.fetchall()}
 
 
-def _add_column_if_not_exists(conn, table_name: str, column_name: str, 
+def _add_column_if_not_exists(conn, table_name: str, column_name: str,
                                column_def: str, existing_columns: set) -> bool:
     """Add a column if it doesn't exist. Returns True if column was added or already exists."""
     if column_name in existing_columns:
         logging.info(f"Column '{column_name}' already exists in '{table_name}'.")
         return True
-    
+
     try:
         if _is_postgresql():
             # PostgreSQL 9.6+ supports IF NOT EXISTS
@@ -84,7 +87,7 @@ def _add_column_if_not_exists(conn, table_name: str, column_name: str,
         else:
             # SQLite doesn't support IF NOT EXISTS, but we already checked
             sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}"
-        
+
         conn.execute(text(sql))
         logging.info(f"Successfully added column '{column_name}' to '{table_name}'.")
         return True
@@ -105,7 +108,7 @@ def _run_schema_migrations():
     database table was created with an older schema.
     """
     logging.info(f"Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})")
-    
+
     try:
         # Use engine.begin() for automatic transaction commit/rollback (SQLAlchemy 2.0)
         with engine.begin() as conn:
@@ -124,41 +127,41 @@ def _run_schema_migrations():
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
                 ))
                 table_exists = result.fetchone() is not None
-            
+
             if not table_exists:
                 logging.info("Users table does not exist yet, skipping migrations.")
                 return
-            
+
             # Get existing columns
             existing_columns = _get_existing_columns(conn, 'users')
             logging.info(f"Existing columns in 'users' table: {existing_columns}")
-            
+
             if not existing_columns:
                 logging.warning("No columns found in users table, this is unexpected.")
                 return
-            
+
             # Define migrations: (column_name, column_definition)
             migrations = [
                 ('tier', "VARCHAR(50) DEFAULT 'free'"),
                 ('monthly_budget_usd', "DOUBLE PRECISION DEFAULT 1.0"),  # DOUBLE PRECISION is PostgreSQL's FLOAT
             ]
-            
+
             # For SQLite, use different type names
             if not _is_postgresql():
                 migrations = [
                     ('tier', "VARCHAR(50) DEFAULT 'free'"),
                     ('monthly_budget_usd', "REAL DEFAULT 1.0"),  # SQLite uses REAL for floats
                 ]
-            
+
             success_count = 0
             for column_name, column_def in migrations:
                 if _add_column_if_not_exists(conn, 'users', column_name, column_def, existing_columns):
                     success_count += 1
-            
+
             logging.info(f"Schema migrations completed: {success_count}/{len(migrations)} columns processed.")
-        
+
         # Transaction is auto-committed when exiting begin() context successfully
-        
+
     except Exception as e:
         logging.error(f"Schema migration failed: {e}", exc_info=True)
         raise  # Re-raise to prevent app from starting with broken schema
@@ -167,19 +170,19 @@ def _run_schema_migrations():
 def _verify_schema():
     """Verify that all required columns exist after migrations."""
     required_columns = {'id', 'email', 'name', 'hashed_password', 'tier', 'monthly_budget_usd', 'created_at'}
-    
+
     try:
         with engine.connect() as conn:
             existing_columns = _get_existing_columns(conn, 'users')
-            
+
             missing = required_columns - existing_columns
             if missing:
                 logging.error(f"SCHEMA VERIFICATION FAILED! Missing columns in 'users' table: {missing}")
                 logging.error(f"Existing columns: {existing_columns}")
                 raise RuntimeError(f"Database schema verification failed. Missing columns: {missing}")
-            
+
             logging.info(f"Schema verification passed. All required columns present: {required_columns}")
-            
+
     except Exception as e:
         logging.error(f"Schema verification error: {e}", exc_info=True)
         raise
@@ -193,9 +196,9 @@ celery_app = Celery('literature_agent', broker=REDIS_URL)
 origins = [
     "https://scholar-agent.vercel.app", # production frontend
     "https://scholaragent.dpdns.org",
-    "http://localhost:8000",          
+    "http://localhost:8000",
     "http://localhost:5174",
-    "http://localhost:5173",          
+    "http://localhost:5173",
 ]
 
 # Global exception handler to ensure CORS headers are always sent
@@ -228,10 +231,10 @@ app.add_middleware(
 class PaperReferenceSchema(BaseModel):
     id: str
     title: str
-    authors: Optional[List[str]] = []
-    abstract: Optional[str] = None
-    url: Optional[str] = None
-    relevance_score: Optional[float] = None
+    authors: list[str] | None = []
+    abstract: str | None = None
+    url: str | None = None
+    relevance_score: float | None = None
     class Config:
         from_attributes = True
 
@@ -249,13 +252,13 @@ class ResearchProjectSchema(BaseModel):
     user_id: str
     title: str
     research_question: str
-    keywords: List[str]
-    subtopics: List[str]
+    keywords: list[str]
+    subtopics: list[str]
     status: str
     total_papers_found: int # <-- ADDED
     created_at: datetime
-    agent_plans: List[AgentPlanSchema] = []
-    paper_references: List[PaperReferenceSchema] = []
+    agent_plans: list[AgentPlanSchema] = []
+    paper_references: list[PaperReferenceSchema] = []
     class Config:
         from_attributes = True
 
@@ -317,7 +320,7 @@ def read_users_me(current_user: User = Depends(auth.get_current_user)):
 # --- Projects Router ---
 projects_router = APIRouter()
 
-@projects_router.get("/projects", response_model=List[ResearchProjectSchema])
+@projects_router.get("/projects", response_model=list[ResearchProjectSchema])
 def get_projects(db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
     projects = db.query(ResearchProject).filter(ResearchProject.user_id == current_user.id).all()
     return projects
@@ -333,7 +336,7 @@ def get_project(project_id: str, db: Session = Depends(get_db), current_user: Us
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
     gemini_client = GeminiClient()
     planner = ResearchPlannerAgent(gemini_client)
-    
+
     initial_plan = planner.generate_initial_plan(project.research_question, project.title)
     generated_keywords = initial_plan.get("keywords", [])
     generated_subtopics = initial_plan.get("subtopics", [])
@@ -392,8 +395,8 @@ class BudgetCheckResponse(BaseModel):
     current_usage: float
     limit: float
     usage_percent: float
-    warning: Optional[str] = None
-    error: Optional[str] = None
+    warning: str | None = None
+    error: str | None = None
 
 @users_router.get("/users/me/usage", response_model=UsageSummaryResponse)
 def get_user_usage(
@@ -429,12 +432,12 @@ class SearchRequest(BaseModel):
 class SearchResultItem(BaseModel):
     chunk_id: str
     content: str
-    paper_id: Optional[str] = None
-    paper_title: Optional[str] = None
-    chunk_type: Optional[str] = None
+    paper_id: str | None = None
+    paper_title: str | None = None
+    chunk_type: str | None = None
     final_score: float
 
-@search_router.post("/projects/{project_id}/search", response_model=List[SearchResultItem])
+@search_router.post("/projects/{project_id}/search", response_model=list[SearchResultItem])
 def semantic_search(
     project_id: str,
     request: SearchRequest,
@@ -446,10 +449,10 @@ def semantic_search(
         ResearchProject.id == project_id,
         ResearchProject.user_id == current_user.id
     ).first()
-    
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Use RAG service if available
     if RAGService is not None:
         rag_service = RAGService()
@@ -471,14 +474,11 @@ def health_check():
     return {"status": "ok"}
 
 #----Helper function for sending email--
-import os
-import logging
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
-from sib_api_v3_sdk.configuration import Configuration
-from sib_api_v3_sdk.api_client import ApiClient
-from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
 from sib_api_v3_sdk import SendSmtpEmail
+from sib_api_v3_sdk.api.transactional_emails_api import TransactionalEmailsApi
+from sib_api_v3_sdk.api_client import ApiClient
+from sib_api_v3_sdk.configuration import Configuration
+
 
 def send_completion_email(user_email: str, user_name: str, project_title: str, synthesis_output: str):
     """
@@ -544,23 +544,18 @@ def send_completion_email(user_email: str, user_name: str, project_title: str, s
 # ... ( Celery task run_literature_review) ...
 @celery_app.task(name='run_literature_review', bind=True)
 def run_literature_review(self, project_id: str, max_papers: int):
-    # ... (imports inside the task remain the same) ...
-    from sqlalchemy.orm import scoped_session
-    from sqlalchemy import create_engine
-    import uuid
-    from agents.gemini_client import GeminiClient
-    from agents.planner import ResearchPlannerAgent
+    """Execute the full literature review pipeline as a Celery background task."""
     from agents.analyzer import PaperAnalyzerAgent
     from agents.synthesizer import SynthesisExecutorAgent
 
-    # ... (DB setup inside the task) ...
-    engine = create_engine(
+    # Create a fresh DB engine/session for this Celery worker process
+    task_engine = create_engine(
         os.environ.get("DATABASE_URL", "sqlite:///./test.db"),
         connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in os.environ.get("DATABASE_URL",
                                                                                                 "sqlite:///./test.db") else {}
     )
-    Session = scoped_session(sessionmaker(bind=engine))
-    db = Session()
+    TaskSession = scoped_session(sessionmaker(bind=task_engine))
+    db = TaskSession()
     gemini = GeminiClient()
     analyzer = PaperAnalyzerAgent(gemini)
     synthesizer = SynthesisExecutorAgent(gemini)
@@ -569,7 +564,7 @@ def run_literature_review(self, project_id: str, max_papers: int):
         project = db.query(ResearchProject).options(joinedload(ResearchProject.user)).filter(ResearchProject.id == project_id).first()
         if not project:
             return {"status": "error", "error": "Project not found"}
-        
+
         # 1. Retrieve papers
         papers_to_analyze = retriever.search_papers(
             search_terms=project.keywords,
@@ -592,9 +587,8 @@ def run_literature_review(self, project_id: str, max_papers: int):
         project.status = "analyzing"
         db.commit()
         paper_analyses = []
-        import json
 
-        for i, paper_data in enumerate(papers_to_analyze):
+        for _i, paper_data in enumerate(papers_to_analyze):
             content = paper_data.get("abstract", "")
             if not content:
                 continue
@@ -642,7 +636,7 @@ def run_literature_review(self, project_id: str, max_papers: int):
         db.commit()
 
         subtopic = project.subtopics[0] if project.subtopics else "Comprehensive Literature Review"
-        
+
         synthesizer_response = synthesizer.synthesize_section(
             subtopic=subtopic,
             paper_analyses="\n\n---\n\n".join(paper_analyses),
@@ -655,10 +649,10 @@ def run_literature_review(self, project_id: str, max_papers: int):
             current_step=1, plan_metadata={}
         )
         db.add(synthesizer_plan)
-        
+
         project.status = "completed"
         db.commit()
-        
+
         # ---send email after completion---
 
         if project.user:

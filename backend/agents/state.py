@@ -1,11 +1,12 @@
 # Agent State Definitions for LangGraph
 # Defines the shared state that flows through the agent pipeline
 
-from typing import TypedDict, Annotated, Sequence, Optional, Any
-from dataclasses import dataclass, field
-from enum import Enum
 import operator
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Annotated, Any, TypedDict
 
 
 class AgentType(str, Enum):
@@ -25,8 +26,8 @@ class PaperData(TypedDict):
     authors: list[str]
     url: str
     source: str
-    relevance_score: Optional[float]
-    analysis: Optional[dict]
+    relevance_score: float | None
+    analysis: dict | None
 
 
 class AgentMessage(TypedDict):
@@ -47,44 +48,44 @@ class AgentState(TypedDict):
     # Core identifiers
     project_id: str
     user_id: str
-    
+
     # Research inputs
     title: str
     research_question: str
-    
+
     # Planner outputs
     keywords: list[str]
     subtopics: list[str]
     search_strategy: dict
-    
+
     # Retriever outputs
     papers: list[PaperData]
     total_papers_found: int
-    
-    # Analyzer outputs  
+
+    # Analyzer outputs
     analyzed_papers: list[dict]
     high_quality_papers: list[dict]  # Papers with relevance_score > threshold
-    
+
     # Synthesizer outputs
     synthesis: str
     synthesis_sections: list[dict]
-    
+
     # Quality control
     quality_score: float
     quality_feedback: str
-    
+
     # Pipeline control
     current_agent: AgentType
     iteration: int
     max_iterations: int
-    
+
     # Message history for debugging/tracing
     messages: Annotated[Sequence[AgentMessage], operator.add]
-    
+
     # Error handling
     errors: list[str]
     status: str  # "running", "completed", "error", "needs_refinement"
-    
+
     # Configuration
     max_papers: int
     relevance_threshold: float
@@ -124,42 +125,42 @@ def create_initial_state(
         # Core identifiers
         project_id=project_id,
         user_id=user_id,
-        
+
         # Research inputs
         title=title,
         research_question=research_question,
-        
+
         # Planner outputs (initialized empty)
         keywords=[],
         subtopics=[],
         search_strategy={},
-        
+
         # Retriever outputs
         papers=[],
         total_papers_found=0,
-        
+
         # Analyzer outputs
         analyzed_papers=[],
         high_quality_papers=[],
-        
+
         # Synthesizer outputs
         synthesis="",
         synthesis_sections=[],
-        
+
         # Quality control
         quality_score=0.0,
         quality_feedback="",
-        
+
         # Pipeline control
         current_agent=AgentType.PLANNER,
         iteration=0,
         max_iterations=max_iterations,
         messages=[],
-        
+
         # Error handling
         errors=[],
         status="running",
-        
+
         # Configuration
         max_papers=max_papers,
         relevance_threshold=relevance_threshold,
@@ -178,14 +179,14 @@ class AgentResult:
     """
     success: bool
     data: Any
-    error: Optional[str] = None
+    error: str | None = None
     metadata: dict = field(default_factory=dict)
-    
+
     def to_message(self, agent: str, action: str) -> AgentMessage:
         """Convert result to an AgentMessage for state history."""
         return AgentMessage(
             agent=agent,
             action=action,
             content=self.data if self.success else self.error,
-            timestamp=datetime.now(timezone.utc).isoformat()
+            timestamp=datetime.now(UTC).isoformat()
         )

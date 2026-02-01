@@ -1,17 +1,18 @@
 # End-to-End Integration Tests
 # Tests the complete research pipeline with real (mocked) external services
 
-import pytest
 import asyncio
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime
 import time
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+
+from agents.llm import GeminiClient, get_llm_client
 
 # Import system components
 from agents.orchestrator import ResearchOrchestrator, create_orchestrator
-from agents.state import create_initial_state, AgentState
-from agents.llm import GeminiClient, get_llm_client
-
+from agents.state import AgentState, create_initial_state
 
 # ============================================
 # Fixtures for E2E Tests
@@ -21,10 +22,10 @@ from agents.llm import GeminiClient, get_llm_client
 def comprehensive_mock_llm():
     """Create a mock LLM client with realistic responses for all agents."""
     mock = Mock(spec=GeminiClient)
-    
+
     def generate_response(prompt: str) -> str:
         prompt_lower = prompt.lower()
-        
+
         # Planner responses
         if "keywords" in prompt_lower or "plan" in prompt_lower:
             return '''
@@ -49,7 +50,7 @@ def comprehensive_mock_llm():
                 ]
             }
             '''
-        
+
         # Analyzer responses
         elif "analyze" in prompt_lower or "relevance" in prompt_lower:
             return '''
@@ -73,7 +74,7 @@ def comprehensive_mock_llm():
                 ]
             }
             '''
-        
+
         # Quality checker responses
         elif "quality" in prompt_lower or "evaluate" in prompt_lower:
             return '''
@@ -96,7 +97,7 @@ def comprehensive_mock_llm():
                 ]
             }
             '''
-        
+
         # Synthesizer responses
         elif "synthesize" in prompt_lower or "synthesis" in prompt_lower:
             return '''
@@ -150,10 +151,10 @@ careful implementation and continued research are essential.
 
 [Generated references would appear here]
             '''
-        
+
         else:
             return "Generic response for unmatched prompt"
-    
+
     mock.chat = Mock(side_effect=generate_response)
     return mock
 
@@ -201,11 +202,11 @@ def mock_paper_retriever():
 @pytest.mark.integration
 class TestEndToEndPipeline:
     """End-to-end tests for the complete research pipeline."""
-    
+
     def test_complete_research_flow_success(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test complete pipeline from start to finish."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-001",
@@ -215,27 +216,27 @@ class TestEndToEndPipeline:
                 max_papers=10,
                 max_iterations=2
             )
-        
+
         # Verify pipeline completion
         assert final_state["status"] == "completed"
-        
+
         # Verify keywords were generated
         assert len(final_state["keywords"]) > 0
-        
+
         # Verify subtopics were generated
         assert len(final_state["subtopics"]) > 0
-        
+
         # Verify messages were recorded
         assert len(final_state["messages"]) > 0
-        
+
         # Verify no critical errors
         critical_errors = [e for e in final_state.get("errors", []) if "critical" in str(e).lower()]
         assert len(critical_errors) == 0
-    
+
     def test_pipeline_generates_synthesis(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that pipeline generates a synthesis document."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-002",
@@ -244,19 +245,19 @@ class TestEndToEndPipeline:
                 research_question="How can machine learning improve educational outcomes?",
                 max_papers=5
             )
-        
+
         # Verify synthesis was generated
         if final_state.get("synthesis"):
             assert len(final_state["synthesis"]) > 100  # Non-trivial content
             assert "learning" in final_state["synthesis"].lower() or "education" in final_state["synthesis"].lower()
-    
+
     def test_pipeline_handles_no_papers_gracefully(self, comprehensive_mock_llm):
         """Test pipeline handles case when no papers are found."""
         mock_empty_retriever = Mock()
         mock_empty_retriever.search_papers = Mock(return_value=[])
-        
+
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_empty_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-003",
@@ -265,14 +266,14 @@ class TestEndToEndPipeline:
                 research_question="What is the impact of quantum computing on ancient basket weaving?",
                 max_papers=5
             )
-        
+
         # Should complete but with appropriate status
         assert final_state["status"] in ["completed", "error_no_papers_found"]
-    
+
     def test_pipeline_respects_max_iterations(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that pipeline respects max_iterations limit."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-004",
@@ -282,23 +283,23 @@ class TestEndToEndPipeline:
                 max_papers=5,
                 max_iterations=1  # Very limited
             )
-        
+
         # Should not exceed max iterations
         assert final_state["iteration"] <= 1
-    
+
     def test_pipeline_tracks_progress(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that pipeline reports progress correctly."""
         progress_updates = []
-        
+
         def progress_callback(agent, message, percent):
             progress_updates.append({
                 "agent": agent,
                 "message": message,
                 "percent": percent
             })
-        
+
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm, progress_callback)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             orchestrator.run_sync(
                 project_id="e2e-test-005",
@@ -307,10 +308,10 @@ class TestEndToEndPipeline:
                 research_question="Test progress tracking",
                 max_papers=3
             )
-        
+
         # Should have recorded progress updates
         assert len(progress_updates) > 0
-        
+
         # Should have seen multiple agents
         agents_seen = set(u["agent"] for u in progress_updates)
         assert len(agents_seen) >= 1
@@ -323,22 +324,22 @@ class TestEndToEndPipeline:
 @pytest.mark.integration
 class TestPipelineResilience:
     """Tests for pipeline resilience and error recovery."""
-    
+
     def test_recovers_from_llm_transient_failures(self, mock_paper_retriever):
         """Test that pipeline recovers from transient LLM failures."""
         call_count = {"count": 0}
-        
+
         def flaky_chat(prompt):
             call_count["count"] += 1
             if call_count["count"] <= 2:
                 raise Exception("Transient API error")
             return '{"keywords": ["test"], "subtopics": ["Test Topic"]}'
-        
+
         mock_llm = Mock()
         mock_llm.chat = Mock(side_effect=flaky_chat)
-        
+
         orchestrator = ResearchOrchestrator(mock_llm)
-        
+
         # Should eventually succeed despite initial failures
         # The actual behavior depends on retry logic in agents
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
@@ -355,19 +356,19 @@ class TestPipelineResilience:
             except Exception:
                 # Expected if retry logic exhausted
                 pass
-    
+
     def test_handles_malformed_llm_responses(self, mock_paper_retriever):
         """Test handling of malformed LLM responses."""
         def malformed_response(prompt):
             if "keywords" in prompt.lower():
                 return "This is not valid JSON at all"
             return '{"relevance_score": 50}'
-        
+
         mock_llm = Mock()
         mock_llm.chat = Mock(side_effect=malformed_response)
-        
+
         orchestrator = ResearchOrchestrator(mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="malformed-test-001",
@@ -376,7 +377,7 @@ class TestPipelineResilience:
                 research_question="Test",
                 max_papers=3
             )
-        
+
         # Should complete with graceful degradation
         assert final_state["status"] in ["completed", "error"]
 
@@ -388,11 +389,11 @@ class TestPipelineResilience:
 @pytest.mark.integration
 class TestDataFlow:
     """Tests for data flow between agents."""
-    
+
     def test_keywords_flow_to_retriever(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that planner keywords are used by retriever."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-001",
@@ -401,17 +402,17 @@ class TestDataFlow:
                 research_question="How does AI affect education?",
                 max_papers=5
             )
-        
+
         # Verify keywords were generated
         assert len(final_state["keywords"]) > 0
-        
+
         # Verify retriever was called (search_papers should have been called)
         assert mock_paper_retriever.search_papers.called or len(final_state.get("papers", [])) >= 0
-    
+
     def test_papers_flow_to_analyzer(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that retrieved papers are analyzed."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-002",
@@ -420,7 +421,7 @@ class TestDataFlow:
                 research_question="Test question",
                 max_papers=5
             )
-        
+
         # If papers were found, they should be analyzed
         if final_state.get("papers"):
             # Either analyzed_papers exists or papers have analysis
@@ -429,11 +430,11 @@ class TestDataFlow:
                 any(p.get("analysis") for p in final_state.get("papers", []))
             )
             assert has_analysis or final_state["status"] != "completed"
-    
+
     def test_analysis_flows_to_synthesizer(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that paper analyses are used in synthesis."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-        
+
         with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-003",
@@ -442,7 +443,7 @@ class TestDataFlow:
                 research_question="How does AI improve learning?",
                 max_papers=5
             )
-        
+
         # If synthesis exists, it should be based on analyzed papers
         if final_state.get("synthesis"):
             assert len(final_state["synthesis"]) > 50
@@ -456,14 +457,14 @@ class TestDataFlow:
 @pytest.mark.slow
 class TestConcurrentExecution:
     """Tests for concurrent pipeline execution."""
-    
+
     def test_multiple_concurrent_pipelines(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test running multiple pipelines concurrently."""
         import threading
-        
+
         results = {}
         errors = []
-        
+
         def run_pipeline(project_id):
             try:
                 orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
@@ -478,18 +479,18 @@ class TestConcurrentExecution:
                 results[project_id] = final_state["status"]
             except Exception as e:
                 errors.append((project_id, str(e)))
-        
+
         # Run 3 pipelines concurrently
         threads = [
             threading.Thread(target=run_pipeline, args=(f"concurrent-{i}",))
             for i in range(3)
         ]
-        
+
         for t in threads:
             t.start()
-        
+
         for t in threads:
             t.join(timeout=60)
-        
+
         # Should complete without major errors
         assert len(errors) < 3  # At least some should succeed

@@ -1,9 +1,21 @@
 # SQLAlchemy models for Users, ResearchProjects, AgentPlans, PaperReferences
-from sqlalchemy import Column, String, DateTime, Text, Integer, Float, ForeignKey, JSON, Date, Boolean
+from datetime import datetime
+from uuid import uuid4
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from uuid import uuid4
-from datetime import datetime, date
 
 Base = declarative_base()
 
@@ -12,7 +24,7 @@ class User(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     email = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
-    hashed_password = Column(String, nullable=False) 
+    hashed_password = Column(String, nullable=False)
     institution = Column(String)
     tier = Column(String, default='free')  # free, pro, enterprise
     monthly_budget_usd = Column(Float, default=1.0)

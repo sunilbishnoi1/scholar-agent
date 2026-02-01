@@ -5,14 +5,13 @@ Uses Google's text-embedding model (Gemini) for generating embeddings.
 Includes caching to avoid redundant API calls.
 """
 
-import os
 import hashlib
 import logging
-from typing import List, Optional
-from dataclasses import dataclass
-import requests
+import os
 import time
-from functools import lru_cache
+from dataclasses import dataclass
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 class EmbeddingResult:
     """Result of an embedding operation."""
     text: str
-    embedding: List[float]
+    embedding: list[float]
     model: str
     token_count: int
 
@@ -36,18 +35,18 @@ class EmbeddingService:
     - Automatic retry with exponential backoff
     - Token counting for cost tracking
     """
-    
+
     # Google's text-embedding-004 model
     MODEL_NAME = "text-embedding-004"
     EMBEDDING_DIM = 768  # Dimension for text-embedding-004
-    
+
     # Rate limiting
     MAX_BATCH_SIZE = 100
     REQUESTS_PER_MINUTE = 1500
-    
+
     def __init__(
-        self, 
-        api_key: Optional[str] = None,
+        self,
+        api_key: str | None = None,
         cache_size: int = 10000
     ):
         """
@@ -60,19 +59,19 @@ class EmbeddingService:
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
-        
+
         self.base_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL_NAME}:embedContent"
         self.batch_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL_NAME}:batchEmbedContents"
-        
+
         # Simple in-memory cache
         self._cache: dict = {}
         self._cache_size = cache_size
-        
+
         # Stats tracking
         self.total_tokens = 0
         self.total_requests = 0
         self.cache_hits = 0
-        
+
         logger.info(f"EmbeddingService initialized with model {self.MODEL_NAME}")
 
     def _get_cache_key(self, text: str) -> str:
@@ -83,7 +82,7 @@ class EmbeddingService:
         """Rough token estimate (approximately 4 chars per token)."""
         return len(text) // 4
 
-    def embed(self, text: str) -> List[float]:
+    def embed(self, text: str) -> list[float]:
         """
         Generate embedding for a single text.
         
@@ -98,17 +97,17 @@ class EmbeddingService:
         if cache_key in self._cache:
             self.cache_hits += 1
             return self._cache[cache_key]
-        
+
         # Make API request
         embedding = self._call_embedding_api(text)
-        
+
         # Cache result
         if len(self._cache) < self._cache_size:
             self._cache[cache_key] = embedding
-        
+
         return embedding
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """
         Generate embeddings for multiple texts efficiently.
         
@@ -120,12 +119,12 @@ class EmbeddingService:
         """
         if not texts:
             return []
-        
+
         # Separate cached and uncached texts
         results = [None] * len(texts)
         uncached_indices = []
         uncached_texts = []
-        
+
         for i, text in enumerate(texts):
             cache_key = self._get_cache_key(text)
             if cache_key in self._cache:
@@ -134,21 +133,21 @@ class EmbeddingService:
             else:
                 uncached_indices.append(i)
                 uncached_texts.append(text)
-        
+
         # Embed uncached texts in batches
         if uncached_texts:
             embeddings = self._batch_embed_api(uncached_texts)
-            
+
             for idx, embedding in zip(uncached_indices, embeddings):
                 results[idx] = embedding
                 # Cache the result
                 cache_key = self._get_cache_key(texts[idx])
                 if len(self._cache) < self._cache_size:
                     self._cache[cache_key] = embedding
-        
+
         return results
 
-    def _call_embedding_api(self, text: str, retries: int = 3) -> List[float]:
+    def _call_embedding_api(self, text: str, retries: int = 3) -> list[float]:
         """Make a single embedding API call with retry logic."""
         headers = {"Content-Type": "application/json"}
         payload = {
@@ -157,7 +156,7 @@ class EmbeddingService:
                 "parts": [{"text": text}]
             }
         }
-        
+
         for attempt in range(retries):
             try:
                 response = requests.post(
@@ -166,19 +165,19 @@ class EmbeddingService:
                     json=payload,
                     timeout=30
                 )
-                
+
                 if response.status_code == 429:  # Rate limited
                     wait_time = 2 ** attempt
                     logger.warning(f"Rate limited, waiting {wait_time}s...")
                     time.sleep(wait_time)
                     continue
-                
+
                 response.raise_for_status()
                 result = response.json()
-                
+
                 self.total_requests += 1
                 self.total_tokens += self._estimate_tokens(text)
-                
+
                 # Handle response format: {"embedding": {"values": [...]}} or {"values": [...]}
                 if "embedding" in result:
                     return result["embedding"]["values"]
@@ -186,35 +185,35 @@ class EmbeddingService:
                     return result["values"]
                 else:
                     raise ValueError(f"Unexpected embedding response format: {result}")
-                
+
             except requests.exceptions.RequestException as e:
                 if attempt == retries - 1:
                     logger.error(f"Embedding API call failed after {retries} attempts: {e}")
                     raise
                 time.sleep(2 ** attempt)
-        
+
         raise RuntimeError("Failed to get embedding")
 
-    def _batch_embed_api(self, texts: List[str], retries: int = 3) -> List[List[float]]:
+    def _batch_embed_api(self, texts: list[str], retries: int = 3) -> list[list[float]]:
         """Make batch embedding API calls."""
         all_embeddings = []
-        
+
         # Process in chunks of MAX_BATCH_SIZE
         for i in range(0, len(texts), self.MAX_BATCH_SIZE):
             batch = texts[i:i + self.MAX_BATCH_SIZE]
             batch_embeddings = self._call_batch_api(batch, retries)
             all_embeddings.extend(batch_embeddings)
-            
+
             # Small delay between batches to avoid rate limiting
             if i + self.MAX_BATCH_SIZE < len(texts):
                 time.sleep(0.1)
-        
+
         return all_embeddings
 
-    def _call_batch_api(self, texts: List[str], retries: int = 3) -> List[List[float]]:
+    def _call_batch_api(self, texts: list[str], retries: int = 3) -> list[list[float]]:
         """Make a batch embedding API call."""
         headers = {"Content-Type": "application/json"}
-        
+
         requests_list = [
             {
                 "model": f"models/{self.MODEL_NAME}",
@@ -224,9 +223,9 @@ class EmbeddingService:
             }
             for text in texts
         ]
-        
+
         payload = {"requests": requests_list}
-        
+
         for attempt in range(retries):
             try:
                 response = requests.post(
@@ -235,19 +234,19 @@ class EmbeddingService:
                     json=payload,
                     timeout=60
                 )
-                
+
                 if response.status_code == 429:  # Rate limited
                     wait_time = 2 ** attempt
                     logger.warning(f"Rate limited, waiting {wait_time}s...")
                     time.sleep(wait_time)
                     continue
-                
+
                 response.raise_for_status()
                 result = response.json()
-                
+
                 self.total_requests += 1
                 self.total_tokens += sum(self._estimate_tokens(t) for t in texts)
-                
+
                 # Handle batch response format
                 embeddings = []
                 for item in result.get("embeddings", []):
@@ -258,15 +257,15 @@ class EmbeddingService:
                     else:
                         logger.warning(f"Unexpected embedding item format: {item}")
                         embeddings.append([0.0] * self.EMBEDDING_DIM)  # Fallback
-                
+
                 return embeddings
-                
+
             except requests.exceptions.RequestException as e:
                 if attempt == retries - 1:
                     logger.error(f"Batch embedding API call failed: {e}")
                     raise
                 time.sleep(2 ** attempt)
-        
+
         raise RuntimeError("Failed to get batch embeddings")
 
     def get_stats(self) -> dict:
@@ -286,7 +285,7 @@ class EmbeddingService:
 
 
 # Singleton instance for reuse
-_embedding_service: Optional[EmbeddingService] = None
+_embedding_service: EmbeddingService | None = None
 
 
 def get_embedding_service() -> EmbeddingService:

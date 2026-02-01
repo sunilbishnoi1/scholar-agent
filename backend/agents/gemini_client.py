@@ -1,10 +1,13 @@
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import requests
+import logging
 import os
-import time     
-import logging  
+import time
+
+import requests
+
 
 class GeminiClient:
     def __init__(self, api_key=None):
@@ -18,14 +21,14 @@ class GeminiClient:
             "contents": [{"parts": [{"text": prompt}]}]
         }
 
-        retries = 5  
-        backoff_factor = 2 
-        
+        retries = 5
+        backoff_factor = 2
+
         for i in range(retries):
             try:
                 resp = requests.post(self.base_url, headers=headers, params=params, json=data, timeout=60)
                 resp.raise_for_status()
-                
+
                 result = resp.json()
                 try:
                     return result["candidates"][0]["content"]["parts"][0]["text"]
@@ -49,5 +52,5 @@ class GeminiClient:
                     time.sleep(wait_time)
                 else:
                     raise e
-        
+
         return "Error: Could not retrieve a valid response from the model after multiple retries."

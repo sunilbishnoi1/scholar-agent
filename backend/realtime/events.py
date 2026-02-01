@@ -1,38 +1,37 @@
 # WebSocket Event Types and Broadcasting Utilities
 # Standardized event format for real-time agent updates
 
-import logging
 import json
-from enum import Enum
-from dataclasses import dataclass, asdict, field
+import logging
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Any, Dict, List
-import os
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class EventType(str, Enum):
     """Types of events that can be broadcast to clients."""
-    
+
     # Connection events
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
-    
+
     # Agent lifecycle events
     AGENT_STARTED = "agent_started"
     AGENT_COMPLETED = "agent_completed"
     AGENT_ERROR = "agent_error"
-    
+
     # Progress events
     STATUS_UPDATE = "status"
     PROGRESS_UPDATE = "progress"
     LOG_MESSAGE = "log"
-    
+
     # Paper processing events
     PAPER_FOUND = "paper_found"
     PAPER_ANALYZED = "paper_analyzed"
-    
+
     # Project events
     PROJECT_COMPLETED = "complete"
     PROJECT_ERROR = "error"
@@ -53,20 +52,20 @@ class AgentEvent:
         timestamp: When the event occurred
     """
     type: EventType
-    agent: Optional[str] = None
-    project_id: Optional[str] = None
-    message: Optional[str] = None
-    progress: Optional[float] = None
-    data: Optional[Dict[str, Any]] = None
+    agent: str | None = None
+    project_id: str | None = None
+    message: str | None = None
+    progress: float | None = None
+    data: dict[str, Any] | None = None
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         result = {
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
             "timestamp": self.timestamp
         }
-        
+
         if self.agent:
             result["agent"] = self.agent
         if self.project_id:
@@ -77,9 +76,9 @@ class AgentEvent:
             result["progress"] = self.progress
         if self.data:
             result["data"] = self.data
-        
+
         return result
-    
+
     def to_json(self) -> str:
         """Convert to JSON string."""
         return json.dumps(self.to_dict())
@@ -119,7 +118,7 @@ def create_progress_event(
         data["current"] = current
     if total is not None:
         data["total"] = total
-    
+
     return AgentEvent(
         type=EventType.PROGRESS_UPDATE,
         agent=agent,
@@ -156,7 +155,7 @@ def create_paper_event(
     data = {"paper_title": paper_title}
     if paper_data:
         data.update(paper_data)
-    
+
     return AgentEvent(
         type=event_type,
         agent="retriever" if event_type == EventType.PAPER_FOUND else "analyzer",
@@ -212,13 +211,13 @@ async def broadcast_agent_update(
         use_redis: Whether to also publish to Redis (for distributed)
     """
     from .manager import get_connection_manager
-    
+
     manager = get_connection_manager()
     event_dict = event.to_dict()
-    
+
     # Broadcast to local WebSocket connections
     await manager.broadcast_to_project(project_id, event_dict)
-    
+
     # Also publish to Redis for distributed deployments
     if use_redis:
         try:
@@ -273,7 +272,7 @@ class AgentProgressTracker:
             tracker.update_progress((i + 1) / len(papers) * 100)
         tracker.complete_agent("retriever")
     """
-    
+
     AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer"]
     AGENT_WEIGHTS = {
         "planner": 10,      # 10% of total progress
@@ -281,33 +280,33 @@ class AgentProgressTracker:
         "analyzer": 50,     # 50% of total progress
         "synthesizer": 20   # 20% of total progress
     }
-    
+
     def __init__(self, project_id: str):
         self.project_id = project_id
-        self.current_agent: Optional[str] = None
-        self.agent_progress: Dict[str, float] = {}
-        self.completed_agents: List[str] = []
-    
+        self.current_agent: str | None = None
+        self.agent_progress: dict[str, float] = {}
+        self.completed_agents: list[str] = []
+
     def _calculate_total_progress(self) -> float:
         """Calculate overall progress based on agent weights."""
         total = 0.0
-        
+
         for agent in self.AGENT_ORDER:
             weight = self.AGENT_WEIGHTS.get(agent, 25)
-            
+
             if agent in self.completed_agents:
                 total += weight
             elif agent == self.current_agent:
                 agent_progress = self.agent_progress.get(agent, 0)
                 total += (agent_progress / 100) * weight
-        
+
         return min(total, 100)
-    
+
     def start_agent(self, agent: str, message: str = None):
         """Signal that an agent has started."""
         self.current_agent = agent
         self.agent_progress[agent] = 0
-        
+
         event = AgentEvent(
             type=EventType.AGENT_STARTED,
             agent=agent,
@@ -317,13 +316,13 @@ class AgentProgressTracker:
             data={"agent": agent, "status": "running"}
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def complete_agent(self, agent: str, message: str = None):
         """Signal that an agent has completed."""
         self.agent_progress[agent] = 100
         if agent not in self.completed_agents:
             self.completed_agents.append(agent)
-        
+
         event = AgentEvent(
             type=EventType.AGENT_COMPLETED,
             agent=agent,
@@ -333,14 +332,14 @@ class AgentProgressTracker:
             data={"agent": agent, "status": "completed"}
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def update_progress(self, agent_progress: float, message: str = None):
         """Update progress within the current agent."""
         if not self.current_agent:
             return
-        
+
         self.agent_progress[self.current_agent] = agent_progress
-        
+
         event = create_progress_event(
             project_id=self.project_id,
             agent=self.current_agent,
@@ -350,7 +349,7 @@ class AgentProgressTracker:
             total=100
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def log(self, message: str, level: str = "info"):
         """Log a message for the current agent."""
         event = create_log_event(
@@ -360,7 +359,7 @@ class AgentProgressTracker:
             level=level
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def paper_found(self, title: str, data: dict = None):
         """Notify that a paper was found."""
         event = create_paper_event(
@@ -370,13 +369,13 @@ class AgentProgressTracker:
             paper_data=data
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def paper_analyzed(self, title: str, relevance_score: float = None):
         """Notify that a paper was analyzed."""
         data = {}
         if relevance_score is not None:
             data["relevance_score"] = relevance_score
-        
+
         event = create_paper_event(
             project_id=self.project_id,
             event_type=EventType.PAPER_ANALYZED,
@@ -384,7 +383,7 @@ class AgentProgressTracker:
             paper_data=data
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def complete(self, papers_analyzed: int = 0, synthesis_words: int = 0):
         """Signal project completion."""
         event = create_completion_event(
@@ -397,7 +396,7 @@ class AgentProgressTracker:
             }
         )
         sync_broadcast_agent_update(self.project_id, event)
-    
+
     def error(self, error_message: str):
         """Signal project error."""
         event = create_completion_event(

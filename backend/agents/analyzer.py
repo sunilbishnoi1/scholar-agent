@@ -1,4 +1,3 @@
-import json
 
 class PaperAnalyzerAgent:
     def __init__(self, llm_client):

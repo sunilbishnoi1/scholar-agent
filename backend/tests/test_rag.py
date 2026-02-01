@@ -10,21 +10,21 @@ Tests cover:
 - Reranking
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 import hashlib
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Import RAG components
 from rag.chunker import (
-    SemanticChunker,
-    PaperChunk,
     ChunkType,
+    PaperChunk,
+    SemanticChunker,
 )
 from rag.embeddings import EmbeddingService
-from rag.vector_store import AcademicVectorStore, SearchResult
 from rag.hybrid_search import BM25Index, HybridSearchEngine
 from rag.reranker import CrossEncoderReranker, RerankResult
-
+from rag.vector_store import AcademicVectorStore, SearchResult
 
 # ============== Fixtures ==============
 
@@ -89,16 +89,16 @@ def mock_embedding_service():
     """Create a mock embedding service."""
     mock = Mock(spec=EmbeddingService)
     mock.EMBEDDING_DIM = 768
-    
+
     # Return deterministic embeddings based on text hash
     def mock_embed(text):
         # Create a deterministic "embedding" from text
         hash_val = hashlib.md5(text.encode()).hexdigest()
         return [float(int(c, 16)) / 15.0 for c in hash_val[:768 // 16]] * 16
-    
+
     mock.embed.side_effect = mock_embed
     mock.embed_batch.side_effect = lambda texts: [mock_embed(t) for t in texts]
-    
+
     return mock
 
 
@@ -112,19 +112,19 @@ def bm25_index():
 
 class TestSemanticChunker:
     """Tests for the semantic chunker."""
-    
+
     def test_chunk_paper_basic(self, chunker, sample_paper):
         """Test basic paper chunking."""
         chunks = chunker.chunk_paper(sample_paper)
-        
+
         assert len(chunks) >= 2  # At least title and abstract
         assert all(isinstance(c, PaperChunk) for c in chunks)
-        
+
         # Check title chunk
         title_chunks = [c for c in chunks if c.chunk_type == ChunkType.TITLE]
         assert len(title_chunks) == 1
         assert "Machine Learning in Education" in title_chunks[0].content
-        
+
         # Check abstract chunk
         abstract_chunks = [c for c in chunks if c.chunk_type == ChunkType.ABSTRACT]
         assert len(abstract_chunks) >= 1
@@ -132,12 +132,12 @@ class TestSemanticChunker:
     def test_chunk_paper_with_sections(self, chunker, sample_paper_with_full_text):
         """Test chunking paper with full text sections."""
         chunks = chunker.chunk_paper(sample_paper_with_full_text)
-        
+
         # Should have chunks from different sections
         chunk_types = set(c.chunk_type for c in chunks)
         assert ChunkType.TITLE in chunk_types
         assert ChunkType.ABSTRACT in chunk_types
-        
+
         # Should detect methodology section
         method_chunks = [c for c in chunks if c.chunk_type == ChunkType.METHODOLOGY]
         assert len(method_chunks) >= 1
@@ -145,17 +145,17 @@ class TestSemanticChunker:
     def test_chunk_weights(self, chunker, sample_paper):
         """Test that chunks have appropriate weights."""
         chunks = chunker.chunk_paper(sample_paper)
-        
+
         title_chunk = next(c for c in chunks if c.chunk_type == ChunkType.TITLE)
         abstract_chunk = next(c for c in chunks if c.chunk_type == ChunkType.ABSTRACT)
-        
+
         # Title should have higher weight than abstract
         assert title_chunk.weight > abstract_chunk.weight
 
     def test_chunk_has_required_fields(self, chunker, sample_paper):
         """Test that chunks have all required fields."""
         chunks = chunker.chunk_paper(sample_paper)
-        
+
         for chunk in chunks:
             assert chunk.paper_id == sample_paper["id"]
             assert chunk.paper_title == sample_paper["title"]
@@ -171,9 +171,9 @@ class TestSemanticChunker:
             "abstract": "",
             "authors": [],
         }
-        
+
         chunks = chunker.chunk_paper(paper)
-        
+
         # Should still create title chunk
         assert len(chunks) >= 1
         assert chunks[0].chunk_type == ChunkType.TITLE
@@ -182,7 +182,7 @@ class TestSemanticChunker:
         """Test chunking multiple papers."""
         papers = [sample_paper, sample_paper_with_full_text]
         all_chunks = chunker.chunk_papers(papers)
-        
+
         # Should have chunks from both papers
         paper_ids = set(c.paper_id for c in all_chunks)
         assert len(paper_ids) == 2
@@ -190,7 +190,7 @@ class TestSemanticChunker:
     def test_to_dict(self, chunker, sample_paper):
         """Test chunk serialization to dict."""
         chunks = chunker.chunk_paper(sample_paper)
-        
+
         for chunk in chunks:
             chunk_dict = chunk.to_dict()
             assert "content" in chunk_dict
@@ -203,7 +203,7 @@ class TestSemanticChunker:
 
 class TestBM25Index:
     """Tests for BM25 keyword search."""
-    
+
     def test_add_documents(self, bm25_index):
         """Test adding documents to the index."""
         docs = [
@@ -211,9 +211,9 @@ class TestBM25Index:
             {"content": "deep learning neural networks"},
             {"content": "natural language processing"},
         ]
-        
+
         bm25_index.add_documents(docs)
-        
+
         assert bm25_index.total_docs == 3
         assert len(bm25_index.documents) == 3
 
@@ -224,10 +224,10 @@ class TestBM25Index:
             {"content": "deep learning in healthcare applications"},
             {"content": "natural language processing for chatbots"},
         ]
-        
+
         bm25_index.add_documents(docs)
         results = bm25_index.search("machine learning", top_k=3)
-        
+
         assert len(results) > 0
         # First result should be about machine learning
         top_doc_id, top_score = results[0]
@@ -240,10 +240,10 @@ class TestBM25Index:
             {"content": "python programming language"},
             {"content": "javascript web development"},
         ]
-        
+
         bm25_index.add_documents(docs)
         results = bm25_index.search("quantum physics", top_k=3)
-        
+
         # Should return empty or very low scores
         assert len(results) == 0 or all(score < 0.1 for _, score in results)
 
@@ -251,20 +251,20 @@ class TestBM25Index:
         """Test search with empty query."""
         bm25_index.add_documents([{"content": "test document"}])
         results = bm25_index.search("", top_k=3)
-        
+
         assert len(results) == 0
 
     def test_search_empty_index(self, bm25_index):
         """Test search on empty index."""
         results = bm25_index.search("test query", top_k=3)
-        
+
         assert len(results) == 0
 
     def test_clear_index(self, bm25_index):
         """Test clearing the index."""
         bm25_index.add_documents([{"content": "test"}])
         assert bm25_index.total_docs == 1
-        
+
         bm25_index.clear()
         assert bm25_index.total_docs == 0
 
@@ -272,13 +272,13 @@ class TestBM25Index:
         """Test retrieving document by ID."""
         docs = [{"content": "doc one"}, {"content": "doc two"}]
         bm25_index.add_documents(docs)
-        
+
         doc = bm25_index.get_document(0)
         assert doc["content"] == "doc one"
-        
+
         doc = bm25_index.get_document(1)
         assert doc["content"] == "doc two"
-        
+
         # Invalid ID
         assert bm25_index.get_document(999) is None
 
@@ -287,23 +287,23 @@ class TestBM25Index:
 
 class TestCrossEncoderReranker:
     """Tests for the cross-encoder reranker."""
-    
+
     def test_heuristic_scoring(self):
         """Test heuristic relevance scoring."""
         reranker = CrossEncoderReranker(use_llm_reranker=False)
-        
+
         results = [
             {"content": "machine learning in education improves outcomes", "score": 0.8},
             {"content": "cooking recipes for beginners", "score": 0.9},
             {"content": "deep learning for educational assessment", "score": 0.7},
         ]
-        
+
         reranked = reranker.rerank(
             query="machine learning education",
             results=results,
             top_k=3,
         )
-        
+
         # ML education content should rank higher after reranking
         assert len(reranked) == 3
         assert "machine learning" in reranked[0].content.lower()
@@ -311,28 +311,28 @@ class TestCrossEncoderReranker:
     def test_rerank_empty_results(self):
         """Test reranking with empty results."""
         reranker = CrossEncoderReranker(use_llm_reranker=False)
-        
+
         reranked = reranker.rerank(
             query="test query",
             results=[],
             top_k=5,
         )
-        
+
         assert len(reranked) == 0
 
     def test_rerank_single_result(self):
         """Test reranking with single result."""
         reranker = CrossEncoderReranker(use_llm_reranker=False)
-        
+
         results = [{"content": "test content", "score": 0.5}]
         reranked = reranker.rerank(query="test", results=results, top_k=5)
-        
+
         assert len(reranked) == 1
 
     def test_rerank_preserves_metadata(self):
         """Test that reranking preserves metadata."""
         reranker = CrossEncoderReranker(use_llm_reranker=False)
-        
+
         results = [
             {
                 "content": "test content",
@@ -341,9 +341,9 @@ class TestCrossEncoderReranker:
                 "paper_title": "Test Paper",
             }
         ]
-        
+
         reranked = reranker.rerank(query="test", results=results, top_k=5)
-        
+
         assert reranked[0].metadata["paper_id"] == "paper123"
 
 
@@ -351,7 +351,7 @@ class TestCrossEncoderReranker:
 
 class TestHybridSearchIntegration:
     """Integration tests for the hybrid search pipeline."""
-    
+
     @pytest.fixture
     def hybrid_engine(self, mock_embedding_service):
         """Create hybrid search engine with mocked dependencies."""
@@ -359,16 +359,16 @@ class TestHybridSearchIntegration:
             mock_vector_store = Mock(spec=AcademicVectorStore)
             mock_vector_store.search.return_value = []
             mock_vs.return_value = mock_vector_store
-            
+
             with patch('rag.hybrid_search.get_embedding_service') as mock_es:
                 mock_es.return_value = mock_embedding_service
-                
+
                 engine = HybridSearchEngine(
                     vector_store=mock_vector_store,
                     embedding_service=mock_embedding_service,
                     use_hyde=False,  # Disable HyDE for testing
                 )
-                
+
                 return engine
 
     def test_build_bm25_index(self, hybrid_engine):
@@ -377,9 +377,9 @@ class TestHybridSearchIntegration:
             {"content": "machine learning", "chunk_id": "1"},
             {"content": "deep learning", "chunk_id": "2"},
         ]
-        
+
         hybrid_engine.build_bm25_index("project123", documents)
-        
+
         # Index should be created
         assert "project123" in hybrid_engine._bm25_indexes
         assert hybrid_engine._bm25_indexes["project123"].total_docs == 2
@@ -388,7 +388,7 @@ class TestHybridSearchIntegration:
         """Test clearing project index."""
         hybrid_engine.build_bm25_index("project123", [{"content": "test"}])
         assert "project123" in hybrid_engine._bm25_indexes
-        
+
         hybrid_engine.clear_project_index("project123")
         assert "project123" not in hybrid_engine._bm25_indexes
 
@@ -397,32 +397,32 @@ class TestHybridSearchIntegration:
 
 class TestVectorStoreMocked:
     """Tests for vector store with mocked Qdrant client."""
-    
+
     @pytest.fixture
     def mock_qdrant_client(self):
         """Create a mock Qdrant client."""
         mock_client = Mock()
-        
+
         # Mock get_collections
         mock_collections = Mock()
         mock_collections.collections = []
         mock_client.get_collections.return_value = mock_collections
-        
+
         # Mock create_collection
         mock_client.create_collection.return_value = None
         mock_client.create_payload_index.return_value = None
-        
+
         # Mock upsert
         mock_client.upsert.return_value = None
-        
+
         # Mock search
         mock_client.search.return_value = []
-        
+
         # Mock count
         mock_count = Mock()
         mock_count.count = 0
         mock_client.count.return_value = mock_count
-        
+
         return mock_client
 
     def test_search_result_to_dict(self):
@@ -437,9 +437,9 @@ class TestVectorStoreMocked:
             weight=1.5,
             metadata={"key": "value"},
         )
-        
+
         result_dict = result.to_dict()
-        
+
         assert result_dict["chunk_id"] == "chunk123"
         assert result_dict["score"] == 0.85
         assert result_dict["metadata"]["key"] == "value"
@@ -449,7 +449,7 @@ class TestVectorStoreMocked:
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
-    
+
     def test_chunker_handles_unicode(self, chunker):
         """Test chunker handles unicode text."""
         paper = {
@@ -458,23 +458,23 @@ class TestEdgeCases:
             "abstract": "This paper discusses émigré contributions to AI research. Includes symbols: α, β, γ.",
             "authors": ["张三", "李四"],
         }
-        
+
         chunks = chunker.chunk_paper(paper)
         assert len(chunks) >= 1
 
     def test_chunker_handles_very_long_abstract(self, chunker):
         """Test chunker splits very long abstracts."""
         long_abstract = "This is a test sentence. " * 500  # Very long
-        
+
         paper = {
             "id": "long123",
             "title": "Test",
             "abstract": long_abstract,
             "authors": [],
         }
-        
+
         chunks = chunker.chunk_paper(paper)
-        
+
         # Should create multiple chunks for long abstract
         abstract_chunks = [c for c in chunks if c.chunk_type == ChunkType.ABSTRACT]
         assert len(abstract_chunks) >= 1
@@ -485,10 +485,10 @@ class TestEdgeCases:
             {"content": "C++ programming & algorithms (advanced)"},
             {"content": "Python 3.9 @decorators #meta"},
         ]
-        
+
         bm25_index.add_documents(docs)
         results = bm25_index.search("C++ programming", top_k=2)
-        
+
         # Should still find the document
         assert len(results) >= 1
 

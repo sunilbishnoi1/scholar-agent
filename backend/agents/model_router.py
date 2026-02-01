@@ -1,11 +1,9 @@
 # Smart Model Router - Cost-Aware LLM Selection
 # Routes tasks to appropriate Gemini models based on complexity, budget, and performance requirements
 
-from enum import Enum
-from typing import Optional
-from dataclasses import dataclass
 import logging
-import re
+from dataclasses import dataclass
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -42,21 +40,21 @@ class SmartModelRouter:
     - Using pro for complex tasks: $0.001 / 1K tokens
     - Smart routing can reduce costs by 60-80% while maintaining quality
     """
-    
+
     # Cost per 1K tokens for different models (Google Gemini pricing)
     COST_PER_1K_TOKENS = {
         ModelTier.FAST_CHEAP: 0.00001,   # $0.01 per 1M tokens
-        ModelTier.BALANCED: 0.0001,       # $0.10 per 1M tokens  
+        ModelTier.BALANCED: 0.0001,       # $0.10 per 1M tokens
         ModelTier.POWERFUL: 0.001,        # $1.00 per 1M tokens
     }
-    
+
     # Base latency estimates (milliseconds)
     BASE_LATENCY = {
         ModelTier.FAST_CHEAP: 200,
         ModelTier.BALANCED: 500,
         ModelTier.POWERFUL: 1500,
     }
-    
+
     # Task type to default model tier mapping
     TASK_ROUTING_RULES = {
         # Simple extraction/classification tasks
@@ -64,13 +62,13 @@ class SmartModelRouter:
         "classify_relevance": ModelTier.FAST_CHEAP,
         "simple_parsing": ModelTier.FAST_CHEAP,
         "format_output": ModelTier.FAST_CHEAP,
-        
+
         # Medium complexity tasks
         "paper_analysis": ModelTier.BALANCED,
         "summarization": ModelTier.BALANCED,
         "search_planning": ModelTier.BALANCED,
         "relevance_scoring": ModelTier.BALANCED,
-        
+
         # Complex reasoning tasks
         "synthesis": ModelTier.POWERFUL,
         "quality_evaluation": ModelTier.POWERFUL,
@@ -95,8 +93,8 @@ class SmartModelRouter:
         self,
         task_type: str,
         prompt: str,
-        complexity_hint: Optional[str] = None,
-        max_latency_ms: Optional[int] = None
+        complexity_hint: str | None = None,
+        max_latency_ms: int | None = None
     ) -> RoutingDecision:
         """
         Route request to appropriate model based on multiple factors.
@@ -112,19 +110,19 @@ class SmartModelRouter:
         """
         # Estimate token count (rough approximation: 4 chars ≈ 1 token)
         token_count = self._estimate_tokens(prompt)
-        
+
         # Start with task-based routing rule
         suggested_tier = self.TASK_ROUTING_RULES.get(
-            task_type, 
+            task_type,
             ModelTier.BALANCED  # Default to balanced if task type unknown
         )
-        
+
         # Budget-aware downgrade
         estimated_cost = self._estimate_cost(suggested_tier, token_count)
         budget_remaining = self.user_budget - self.spent
         budget_usage_ratio = self.spent / self.user_budget if self.user_budget > 0 else 0
         budget_constrained = False  # Track if we downgraded due to budget
-        
+
         # Check if we've already used 80%+ of budget, or if this call would exceed 90%
         if budget_usage_ratio >= 0.8 or self.spent + estimated_cost > self.user_budget * 0.9:
             # Running low on budget, downgrade to cheapest model
@@ -135,7 +133,7 @@ class SmartModelRouter:
                 f"Budget constraint: Downgrading to {suggested_tier.value} "
                 f"(${self.spent:.4f} / ${self.user_budget:.4f} spent, {budget_usage_ratio*100:.1f}% used)"
             )
-        
+
         # Complexity-based upgrade (only if not budget constrained)
         if not budget_constrained and complexity_hint == "high" and suggested_tier != ModelTier.POWERFUL:
             upgrade_cost = self._estimate_cost(ModelTier.POWERFUL, token_count)
@@ -143,7 +141,7 @@ class SmartModelRouter:
                 suggested_tier = ModelTier.POWERFUL
                 estimated_cost = upgrade_cost
                 logger.info(f"Complexity upgrade: Using {suggested_tier.value} for high complexity task")
-        
+
         # Latency constraint downgrade
         if max_latency_ms:
             estimated_latency = self._estimate_latency(suggested_tier, token_count)
@@ -154,7 +152,7 @@ class SmartModelRouter:
                 elif suggested_tier == ModelTier.BALANCED:
                     suggested_tier = ModelTier.FAST_CHEAP
                 logger.info(f"Latency optimization: Downgraded to {suggested_tier.value}")
-        
+
         # Complexity hint from prompt analysis (only if not budget constrained)
         if not budget_constrained and not complexity_hint:
             complexity_hint = self._analyze_prompt_complexity(prompt)
@@ -163,18 +161,18 @@ class SmartModelRouter:
                 if self.spent + self._estimate_cost(ModelTier.BALANCED, token_count) < self.user_budget:
                     suggested_tier = ModelTier.BALANCED
                     logger.info("Prompt analysis: Upgrading to BALANCED model")
-        
+
         # Final cost calculation
         estimated_cost = self._estimate_cost(suggested_tier, token_count)
         estimated_latency = self._estimate_latency(suggested_tier, token_count)
-        
+
         reason = self._generate_reason(
-            task_type, 
-            suggested_tier, 
-            budget_remaining, 
+            task_type,
+            suggested_tier,
+            budget_remaining,
             complexity_hint
         )
-        
+
         decision = RoutingDecision(
             model=suggested_tier,
             reason=reason,
@@ -182,14 +180,14 @@ class SmartModelRouter:
             estimated_latency_ms=estimated_latency,
             budget_remaining=budget_remaining - estimated_cost
         )
-        
+
         logger.info(
             f"Routing decision: {suggested_tier.value} | "
             f"Cost: ${estimated_cost:.6f} | "
             f"Latency: ~{estimated_latency}ms | "
             f"Budget remaining: ${decision.budget_remaining:.4f}"
         )
-        
+
         return decision
 
     def record_usage(self, actual_cost: float):
@@ -202,7 +200,7 @@ class SmartModelRouter:
         self.spent += actual_cost
         logger.info(f"Recorded usage: ${actual_cost:.6f} | Total spent: ${self.spent:.4f}")
 
-    def reset_budget(self, new_budget: Optional[float] = None):
+    def reset_budget(self, new_budget: float | None = None):
         """
         Reset spending tracker. Typically called at the start of a new billing period.
         
@@ -275,47 +273,47 @@ class SmartModelRouter:
             Complexity level: "low", "medium", or "high"
         """
         prompt_lower = prompt.lower()
-        
+
         # Length-based heuristic
         if len(prompt) > 2000:
             return "high"
         if len(prompt) < 200:
             return "low"
-        
+
         # Keyword-based heuristic
         complex_keywords = [
-            "synthesize", "compare", "contrast", "evaluate", 
+            "synthesize", "compare", "contrast", "evaluate",
             "research gap", "critical analysis", "methodology"
         ]
         medium_keywords = [
             "analyze", "summarize", "explain", "describe"
         ]
-        
+
         if any(keyword in prompt_lower for keyword in complex_keywords):
             return "high"
         if any(keyword in prompt_lower for keyword in medium_keywords):
             return "medium"
-        
+
         return "low"
 
     def _generate_reason(
-        self, 
-        task_type: str, 
-        tier: ModelTier, 
+        self,
+        task_type: str,
+        tier: ModelTier,
         budget_remaining: float,
-        complexity_hint: Optional[str]
+        complexity_hint: str | None
     ) -> str:
         """Generate human-readable reason for routing decision."""
         reasons = []
-        
+
         reasons.append(f"Task '{task_type}' → {tier.value}")
-        
+
         if complexity_hint:
             reasons.append(f"complexity={complexity_hint}")
-        
+
         if budget_remaining < 0.1:
             reasons.append("low budget")
-        
+
         return " | ".join(reasons)
 
     def get_stats(self) -> dict:
@@ -336,7 +334,7 @@ class SmartModelRouter:
 
 # Singleton instance for application-wide use
 # In production, you'd want per-user routers with Redis/DB persistence
-_default_router: Optional[SmartModelRouter] = None
+_default_router: SmartModelRouter | None = None
 
 
 def get_router(user_budget: float = 1.0, user_id: str = "default") -> SmartModelRouter:

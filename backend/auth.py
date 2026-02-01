@@ -1,6 +1,6 @@
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -8,8 +8,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from db import get_db
 from models.database import User
-from db import get_db 
 
 # --- Configuration ---
 # Generate a secret key with: openssl rand -hex 32
@@ -23,7 +23,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 # --- Pydantic Schemas ---
 class TokenData(BaseModel):
-    email: Optional[str] = None
+    email: str | None = None
 
 # --- Utility Functions ---
 def verify_password(plain_password, hashed_password):
@@ -62,12 +62,12 @@ def get_password_hash(password):
         # Surface predictable behavior: raise a clear error for callers
         raise ValueError("Password is too long after encoding; truncate to 72 bytes before hashing")
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expire = datetime.now(UTC) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -87,7 +87,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         token_data = TokenData(email=email)
     except JWTError:
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.email == token_data.email).first()
     if user is None:
         raise credentials_exception

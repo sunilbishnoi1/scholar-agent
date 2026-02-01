@@ -1,7 +1,9 @@
 import pytest
-from agents.planner import ResearchPlannerAgent
+
 from agents.analyzer import PaperAnalyzerAgent
+from agents.planner import ResearchPlannerAgent
 from agents.synthesizer import SynthesisExecutorAgent
+
 
 def test_research_planner_stub():
     agent = ResearchPlannerAgent(llm_client=None)

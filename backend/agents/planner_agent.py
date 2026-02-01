@@ -2,12 +2,11 @@
 # Role: Analyzes research questions, creates search strategies, identifies key subtopics
 
 import json
-import re
 import logging
-from typing import Optional
+import re
 
 from agents.base import ToolEnabledAgent
-from agents.state import AgentState, AgentResult, AgentType
+from agents.state import AgentResult, AgentState, AgentType
 from agents.tools import extract_keywords_from_question, identify_subtopics, refine_search_query
 
 
@@ -20,11 +19,11 @@ class ResearchPlannerAgent(ToolEnabledAgent):
     
     Uses the ReAct pattern: Reason about the task, then Act using tools.
     """
-    
+
     def __init__(self, llm_client):
         super().__init__(llm_client, name="planner")
         self._register_tools()
-    
+
     def _register_tools(self):
         """Register the tools this agent can use."""
         self.register_tool(
@@ -42,7 +41,7 @@ class ResearchPlannerAgent(ToolEnabledAgent):
             lambda **kwargs: refine_search_query(self.llm_client, **kwargs),
             "Refine search query if not enough papers found"
         )
-    
+
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the planner agent.
@@ -59,18 +58,18 @@ class ResearchPlannerAgent(ToolEnabledAgent):
             Updated state with keywords, subtopics, and search strategy
         """
         self._log_start(state)
-        
+
         try:
             # Update current agent
             state["current_agent"] = AgentType.PLANNER
-            
+
             # Tool 1: Extract keywords
             keywords_result = await self.invoke_tool(
                 "extract_keywords",
                 research_question=state["research_question"],
                 title=state["title"]
             )
-            
+
             if keywords_result.success:
                 state["keywords"] = keywords_result.data
                 state["messages"] = [self._create_message(
@@ -84,14 +83,14 @@ class ResearchPlannerAgent(ToolEnabledAgent):
                     state["research_question"],
                     state["title"]
                 )
-            
+
             # Tool 2: Identify subtopics
             subtopics_result = await self.invoke_tool(
                 "identify_subtopics",
                 research_question=state["research_question"],
                 title=state["title"]
             )
-            
+
             if subtopics_result.success:
                 state["subtopics"] = subtopics_result.data
                 state["messages"] = [self._create_message(
@@ -101,7 +100,7 @@ class ResearchPlannerAgent(ToolEnabledAgent):
             else:
                 self.logger.warning(f"Subtopic identification failed: {subtopics_result.error}")
                 state["subtopics"] = ["Comprehensive Literature Review"]
-            
+
             # Create search strategy
             state["search_strategy"] = {
                 "primary_keywords": state["keywords"][:5] if len(state["keywords"]) > 5 else state["keywords"],
@@ -109,7 +108,7 @@ class ResearchPlannerAgent(ToolEnabledAgent):
                 "max_papers_per_source": state["max_papers"] // 2,
                 "sources": ["arXiv", "Semantic Scholar"]
             }
-            
+
             # Log success
             result = AgentResult(
                 success=True,
@@ -123,12 +122,12 @@ class ResearchPlannerAgent(ToolEnabledAgent):
                 }
             )
             self._log_complete(state, result)
-            
+
             return state
-            
+
         except Exception as e:
             return self._handle_error(state, e)
-    
+
     def _fallback_keyword_extraction(self, research_question: str, title: str) -> list[str]:
         """
         Fallback keyword extraction when LLM fails.
@@ -136,14 +135,14 @@ class ResearchPlannerAgent(ToolEnabledAgent):
         """
         # Combine title and question
         text = f"{title} {research_question}".lower()
-        
+
         # Remove common words
         stopwords = {"the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or", "is", "are", "was", "were", "how", "what", "why", "when", "does", "do", "can", "could", "would", "should"}
-        
+
         # Extract words
         words = re.findall(r'\b[a-z]{3,}\b', text)
         keywords = [w for w in words if w not in stopwords]
-        
+
         # Remove duplicates while preserving order
         seen = set()
         unique_keywords = []
@@ -151,9 +150,9 @@ class ResearchPlannerAgent(ToolEnabledAgent):
             if k not in seen:
                 seen.add(k)
                 unique_keywords.append(k)
-        
+
         return unique_keywords[:10]
-    
+
     # Legacy method for backward compatibility
     def generate_initial_plan(self, research_question: str, title: str) -> dict:
         """
@@ -188,7 +187,7 @@ class ResearchPlannerAgent(ToolEnabledAgent):
 
             keywords = data.get("keywords", [])
             subtopics = data.get("subtopics", [])
-            
+
             if isinstance(keywords, list) and all(isinstance(k, str) for k in keywords) and \
                isinstance(subtopics, list) and all(isinstance(s, str) for s in subtopics):
                 return data

@@ -4,27 +4,27 @@ Qdrant Vector Store for Academic Papers.
 Handles storage and retrieval of paper embeddings using Qdrant.
 """
 
-import os
 import hashlib
 import logging
-from typing import List, Dict, Any, Optional
+import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 from qdrant_client.http.models import (
     Distance,
-    VectorParams,
-    PointStruct,
-    Filter,
     FieldCondition,
+    Filter,
     MatchValue,
+    PointStruct,
     SearchParams,
+    VectorParams,
 )
 
-from .embeddings import EmbeddingService, get_embedding_service
 from .chunker import PaperChunk, SemanticChunker
+from .embeddings import EmbeddingService, get_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,9 @@ class SearchResult:
     chunk_type: str
     score: float
     weight: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "chunk_id": self.chunk_id,
             "content": self.content,
@@ -65,15 +65,15 @@ class AcademicVectorStore:
     - Metadata filtering
     - Weighted scoring
     """
-    
+
     COLLECTION_NAME = "academic_papers"
-    
+
     def __init__(
         self,
-        qdrant_url: Optional[str] = None,
-        qdrant_api_key: Optional[str] = None,
-        embedding_service: Optional[EmbeddingService] = None,
-        collection_name: Optional[str] = None,
+        qdrant_url: str | None = None,
+        qdrant_api_key: str | None = None,
+        embedding_service: EmbeddingService | None = None,
+        collection_name: str | None = None,
     ):
         """
         Initialize the vector store.
@@ -88,7 +88,7 @@ class AcademicVectorStore:
             "QDRANT_URL", "http://localhost:6333"
         )
         self.qdrant_api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
-        
+
         # Initialize Qdrant client
         if self.qdrant_api_key:
             self.client = QdrantClient(
@@ -97,17 +97,17 @@ class AcademicVectorStore:
             )
         else:
             self.client = QdrantClient(url=self.qdrant_url)
-        
+
         # Embedding service
         self.embedding_service = embedding_service or get_embedding_service()
         self.embedding_dim = self.embedding_service.EMBEDDING_DIM
-        
+
         # Collection name
         self.collection_name = collection_name or self.COLLECTION_NAME
-        
+
         # Ensure collection exists
         self._ensure_collection()
-        
+
         logger.info(
             f"AcademicVectorStore initialized (url={self.qdrant_url}, "
             f"collection={self.collection_name})"
@@ -118,7 +118,7 @@ class AcademicVectorStore:
         try:
             collections = self.client.get_collections().collections
             exists = any(c.name == self.collection_name for c in collections)
-            
+
             if not exists:
                 self.client.create_collection(
                     collection_name=self.collection_name,
@@ -131,7 +131,7 @@ class AcademicVectorStore:
                         indexing_threshold=10000,
                     ),
                 )
-                
+
                 # Create payload indexes for efficient filtering
                 self.client.create_payload_index(
                     collection_name=self.collection_name,
@@ -148,11 +148,11 @@ class AcademicVectorStore:
                     field_name="chunk_type",
                     field_schema=qdrant_models.PayloadSchemaType.KEYWORD,
                 )
-                
+
                 logger.info(f"Created collection '{self.collection_name}'")
             else:
                 logger.debug(f"Collection '{self.collection_name}' already exists")
-                
+
         except Exception as e:
             logger.error(f"Failed to ensure collection: {e}")
             raise
@@ -166,7 +166,7 @@ class AcademicVectorStore:
 
     def ingest_chunks(
         self,
-        chunks: List[PaperChunk],
+        chunks: list[PaperChunk],
         project_id: str,
         batch_size: int = 100,
     ) -> int:
@@ -183,24 +183,24 @@ class AcademicVectorStore:
         """
         if not chunks:
             return 0
-        
+
         logger.info(f"Ingesting {len(chunks)} chunks for project {project_id}")
-        
+
         total_ingested = 0
-        
+
         # Process in batches
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
-            
+
             # Generate embeddings
             texts = [chunk.content for chunk in batch]
             embeddings = self.embedding_service.embed_batch(texts)
-            
+
             # Create points
             points = []
             for chunk, embedding in zip(batch, embeddings):
                 chunk_id = self._generate_chunk_id(chunk, project_id)
-                
+
                 payload = {
                     "project_id": project_id,
                     "paper_id": chunk.paper_id,
@@ -213,31 +213,31 @@ class AcademicVectorStore:
                     "metadata": chunk.metadata,
                     "ingested_at": datetime.utcnow().isoformat(),
                 }
-                
+
                 points.append(PointStruct(
                     id=chunk_id,
                     vector=embedding,
                     payload=payload,
                 ))
-            
+
             # Upsert to Qdrant (handles duplicates automatically)
             self.client.upsert(
                 collection_name=self.collection_name,
                 points=points,
                 wait=True,
             )
-            
+
             total_ingested += len(points)
             logger.debug(f"Ingested batch {i // batch_size + 1}: {len(points)} chunks")
-        
+
         logger.info(f"Successfully ingested {total_ingested} chunks")
         return total_ingested
 
     def ingest_papers(
         self,
-        papers: List[Dict],
+        papers: list[dict],
         project_id: str,
-        chunker: Optional[SemanticChunker] = None,
+        chunker: SemanticChunker | None = None,
     ) -> int:
         """
         Chunk and ingest papers into the vector store.
@@ -252,14 +252,14 @@ class AcademicVectorStore:
         """
         if not papers:
             return 0
-        
+
         # Use default chunker if not provided
         if chunker is None:
             chunker = SemanticChunker()
-        
+
         # Chunk all papers
         all_chunks = chunker.chunk_papers(papers)
-        
+
         # Ingest chunks
         return self.ingest_chunks(all_chunks, project_id)
 
@@ -268,9 +268,9 @@ class AcademicVectorStore:
         query: str,
         project_id: str,
         top_k: int = 10,
-        chunk_types: Optional[List[str]] = None,
+        chunk_types: list[str] | None = None,
         score_threshold: float = 0.0,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """
         Search for relevant chunks using vector similarity.
         
@@ -286,7 +286,7 @@ class AcademicVectorStore:
         """
         # Generate query embedding
         query_embedding = self.embedding_service.embed(query)
-        
+
         # Build filter
         filter_conditions = [
             FieldCondition(
@@ -294,7 +294,7 @@ class AcademicVectorStore:
                 match=MatchValue(value=project_id),
             )
         ]
-        
+
         if chunk_types:
             filter_conditions.append(
                 FieldCondition(
@@ -302,9 +302,9 @@ class AcademicVectorStore:
                     match=qdrant_models.MatchAny(any=chunk_types),
                 )
             )
-        
+
         search_filter = Filter(must=filter_conditions)
-        
+
         # Search
         results = self.client.query_points(
             collection_name=self.collection_name,
@@ -317,7 +317,7 @@ class AcademicVectorStore:
                 exact=False,
             ),
         ).points
-        
+
         # Convert to SearchResult objects
         search_results = []
         for hit in results:
@@ -332,9 +332,9 @@ class AcademicVectorStore:
                 weight=payload.get("weight", 1.0),
                 metadata=payload.get("metadata", {}),
             ))
-        
+
         logger.debug(f"Search returned {len(search_results)} results for project {project_id}")
-        
+
         return search_results
 
     def search_with_weighted_score(
@@ -343,21 +343,21 @@ class AcademicVectorStore:
         project_id: str,
         top_k: int = 10,
         **kwargs
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """
         Search with weight-adjusted scores.
         
         Combines vector similarity with chunk importance weights.
         """
         results = self.search(query, project_id, top_k=top_k * 2, **kwargs)
-        
+
         # Apply weight adjustments
         for result in results:
             result.score = result.score * result.weight
-        
+
         # Re-sort by weighted score
         results.sort(key=lambda x: x.score, reverse=True)
-        
+
         return results[:top_k]
 
     def delete_project_data(self, project_id: str) -> int:
@@ -383,11 +383,11 @@ class AcademicVectorStore:
                 )
             ),
         )
-        
+
         logger.info(f"Deleted data for project {project_id}")
         return result
 
-    def get_project_stats(self, project_id: str) -> Dict[str, Any]:
+    def get_project_stats(self, project_id: str) -> dict[str, Any]:
         """Get statistics for a project's chunks."""
         # Count total chunks
         count_result = self.client.count(
@@ -401,17 +401,17 @@ class AcademicVectorStore:
                 ]
             ),
         )
-        
+
         return {
             "project_id": project_id,
             "total_chunks": count_result.count,
             "collection_name": self.collection_name,
         }
 
-    def get_collection_info(self) -> Dict[str, Any]:
+    def get_collection_info(self) -> dict[str, Any]:
         """Get collection information and statistics."""
         info = self.client.get_collection(self.collection_name)
-        
+
         return {
             "name": self.collection_name,
             "vectors_count": info.vectors_count,
@@ -422,7 +422,7 @@ class AcademicVectorStore:
 
 
 # Singleton instance
-_vector_store: Optional[AcademicVectorStore] = None
+_vector_store: AcademicVectorStore | None = None
 
 
 def get_vector_store() -> AcademicVectorStore:

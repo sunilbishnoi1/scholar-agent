@@ -1,8 +1,8 @@
 # Research Planner Agent
 # Role: Analyzes research questions, creates search strategies, identifies key subtopics and relevant academic domains inorder to finally in the end achieve the identification of research gaps.
 import json
-import re
 import logging
+import re
 
 
 class ResearchPlannerAgent:
@@ -41,7 +41,7 @@ class ResearchPlannerAgent:
 
             keywords = data.get("keywords", [])
             subtopics = data.get("subtopics", [])
-            
+
             # Basic validation
             if isinstance(keywords, list) and all(isinstance(k, str) for k in keywords) and \
                isinstance(subtopics, list) and all(isinstance(s, str) for s in subtopics):

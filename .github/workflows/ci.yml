@@ -41,7 +41,6 @@ jobs:
 
       - name: Run Ruff (linter)
         run: ruff check backend/ --output-format=github
-        continue-on-error: true
 
       - name: Run Black (formatter check)
         run: black --check --diff backend/

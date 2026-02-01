@@ -9,12 +9,12 @@ This module provides:
 - Cross-encoder reranking
 """
 
-from .vector_store import AcademicVectorStore, get_vector_store, SearchResult
-from .chunker import SemanticChunker, ChunkType, PaperChunk
+from .chunker import ChunkType, PaperChunk, SemanticChunker
 from .embeddings import EmbeddingService, get_embedding_service
-from .hybrid_search import HybridSearchEngine, get_search_engine, HybridSearchResult
+from .hybrid_search import HybridSearchEngine, HybridSearchResult, get_search_engine
 from .reranker import CrossEncoderReranker, RerankResult
 from .service import RAGService, get_rag_service
+from .vector_store import AcademicVectorStore, SearchResult, get_vector_store
 
 __all__ = [
     # Vector Store
