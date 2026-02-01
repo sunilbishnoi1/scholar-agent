@@ -17,7 +17,7 @@ from sib_api_v3_sdk.rest import ApiException
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
 
-from agents.gemini_client import GeminiClient
+from agents.llm import get_llm_client
 from agents.planner import ResearchPlannerAgent
 from models.database import AgentPlan, Base, PaperReference, ResearchProject, User
 from paper_retriever import PaperRetriever
@@ -351,8 +351,8 @@ def get_project(project_id: str, db: Session = Depends(get_db), current_user: Us
 
 @projects_router.post("/projects", response_model=ResearchProjectSchema)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
-    gemini_client = GeminiClient()
-    planner = ResearchPlannerAgent(gemini_client)
+    llm_client = get_llm_client()
+    planner = ResearchPlannerAgent(llm_client)
 
     initial_plan = planner.generate_initial_plan(project.research_question, project.title)
     generated_keywords = initial_plan.get("keywords", [])
@@ -564,6 +564,7 @@ def run_literature_review(self, project_id: str, max_papers: int):
     """Execute the full literature review pipeline as a Celery background task."""
     from agents.analyzer import PaperAnalyzerAgent
     from agents.synthesizer import SynthesisExecutorAgent
+    from agents.llm import get_llm_client
 
     # Create a fresh DB engine/session for this Celery worker process
     task_engine = create_engine(
@@ -573,9 +574,9 @@ def run_literature_review(self, project_id: str, max_papers: int):
     )
     TaskSession = scoped_session(sessionmaker(bind=task_engine))
     db = TaskSession()
-    gemini = GeminiClient()
-    analyzer = PaperAnalyzerAgent(gemini)
-    synthesizer = SynthesisExecutorAgent(gemini)
+    llm_client = get_llm_client()
+    analyzer = PaperAnalyzerAgent(llm_client)
+    synthesizer = SynthesisExecutorAgent(llm_client)
     retriever = PaperRetriever()
     try:
         project = db.query(ResearchProject).options(joinedload(ResearchProject.user)).filter(ResearchProject.id == project_id).first()

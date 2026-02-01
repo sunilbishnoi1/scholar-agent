@@ -308,8 +308,8 @@ class TestProjectsEndpoints:
         app.dependency_overrides[auth.get_current_user] = lambda: mock_user
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        # Mock the GeminiClient and PlannerAgent
-        with patch('main.GeminiClient') as mock_gemini:
+        # Mock the LLM client and PlannerAgent
+        with patch('main.get_llm_client') as mock_get_llm:
             with patch('main.ResearchPlannerAgent') as mock_planner:
                 mock_planner_instance = mock_planner.return_value
                 mock_planner_instance.generate_initial_plan.return_value = {
