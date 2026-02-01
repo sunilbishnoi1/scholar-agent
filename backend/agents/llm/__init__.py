@@ -13,6 +13,12 @@ from agents.llm.factory import (
     get_llm_client,
     set_default_provider,
 )
+from agents.llm.failover import (
+    FailoverDecision,
+    FailoverReason,
+    ModelFailoverManager,
+    get_failover_manager,
+)
 from agents.llm.gemini import GeminiProvider
 from agents.llm.groq_client import GroqClient
 from agents.llm.model_config import (
@@ -51,4 +57,10 @@ __all__ = [
     "GROQ_MODELS",
     "GEMINI_MODELS",
     "get_model_config",
+
+    # Failover
+    "ModelFailoverManager",
+    "FailoverDecision",
+    "FailoverReason",
+    "get_failover_manager",
 ]

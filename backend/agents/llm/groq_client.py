@@ -24,6 +24,7 @@ from agents.error_handling import (
     with_retry,
 )
 from agents.llm.base import BaseLLMClient, LLMResponse
+from agents.llm.failover import FailoverReason, get_failover_manager
 from agents.llm.model_config import GROQ_MODELS, ModelTier
 
 logger = logging.getLogger(__name__)
@@ -32,12 +33,12 @@ logger = logging.getLogger(__name__)
 class TokenBucketRateLimiter:
     """
     Token bucket rate limiter for Groq API.
-    
+
     Implements both RPM (requests per minute) and TPM (tokens per minute) limiting.
     Based on Groq's FREE TIER rate limits:
     - llama-3.3-70b-versatile: 30 RPM, 12K TPM, 1K RPD
     - llama-3.1-8b-instant: 30 RPM, 6K TPM, 14.4K RPD
-    
+
     IMPORTANT: These are strict limits. Exceeding TPM causes 413 errors.
     """
 
@@ -47,13 +48,13 @@ class TokenBucketRateLimiter:
         "llama-3.1-8b-instant": {"rpm": 30, "tpm": 6000, "rpd": 14400},
         "qwen/qwen3-32b": {"rpm": 60, "tpm": 6000, "rpd": 1000},
         # Default conservative limits
-        "default": {"rpm": 20, "tpm": 6000, "rpd": 1000}
+        "default": {"rpm": 20, "tpm": 6000, "rpd": 1000},
     }
 
     def __init__(self, safety_margin: float = 0.8):
         """
         Initialize rate limiter.
-        
+
         Args:
             safety_margin: Use this fraction of the limit (0.8 = 80% of limit)
         """
@@ -78,7 +79,7 @@ class TokenBucketRateLimiter:
         return {
             "rpm": int(limits["rpm"] * self.safety_margin),
             "tpm": int(limits["tpm"] * self.safety_margin),
-            "rpd": int(limits["rpd"] * self.safety_margin)
+            "rpd": int(limits["rpd"] * self.safety_margin),
         }
 
     def update_from_headers(self, headers: dict) -> None:
@@ -98,12 +99,12 @@ class TokenBucketRateLimiter:
         """Parse reset time string like '2m59.56s' to seconds."""
         try:
             total_seconds = 0.0
-            if 'm' in reset_str:
-                parts = reset_str.split('m')
+            if "m" in reset_str:
+                parts = reset_str.split("m")
                 total_seconds += float(parts[0]) * 60
                 reset_str = parts[1] if len(parts) > 1 else ""
-            if 's' in reset_str:
-                total_seconds += float(reset_str.replace('s', ''))
+            if "s" in reset_str:
+                total_seconds += float(reset_str.replace("s", ""))
             return total_seconds
         except:
             return 60.0  # Default to 1 minute
@@ -111,11 +112,11 @@ class TokenBucketRateLimiter:
     def wait_if_needed(self, model: str, estimated_tokens: int = 1000) -> float:
         """
         Wait if we're close to rate limits.
-        
+
         Args:
             model: The model being used
             estimated_tokens: Estimated tokens for this request
-            
+
         Returns:
             Time waited in seconds
         """
@@ -151,7 +152,9 @@ class TokenBucketRateLimiter:
             # Check daily limit first
             if rpd_current >= limits["rpd"]:
                 # Daily limit reached - this is severe
-                logger.warning(f"Daily request limit reached for {model} ({rpd_current}/{limits['rpd']})")
+                logger.warning(
+                    f"Daily request limit reached for {model} ({rpd_current}/{limits['rpd']})"
+                )
                 # Wait until next day reset, but cap at 5 minutes for now
                 wait_time = min(300, 86400 - (now - self._daily_reset))
 
@@ -175,12 +178,16 @@ class TokenBucketRateLimiter:
             if self._remaining_requests is not None and self._remaining_requests <= 1:
                 if self._reset_requests:
                     wait_time = max(wait_time, self._reset_requests + 0.5)
-                    logger.info(f"Server reports low remaining requests, waiting {self._reset_requests:.1f}s")
+                    logger.info(
+                        f"Server reports low remaining requests, waiting {self._reset_requests:.1f}s"
+                    )
 
             if self._remaining_tokens is not None and self._remaining_tokens < estimated_tokens:
                 if self._reset_tokens:
                     wait_time = max(wait_time, self._reset_tokens + 0.5)
-                    logger.info(f"Server reports low remaining tokens, waiting {self._reset_tokens:.1f}s")
+                    logger.info(
+                        f"Server reports low remaining tokens, waiting {self._reset_tokens:.1f}s"
+                    )
 
         # Do the wait outside the lock
         if wait_time > 0:
@@ -226,12 +233,13 @@ class TokenBucketRateLimiter:
                 "rpd_used": self._daily_requests.get(model, 0),
                 "rpd_limit": limits["rpd"],
                 "server_remaining_requests": self._remaining_requests,
-                "server_remaining_tokens": self._remaining_tokens
+                "server_remaining_tokens": self._remaining_tokens,
             }
 
 
 # Global rate limiter instance
 _rate_limiter: TokenBucketRateLimiter | None = None
+
 
 def get_rate_limiter() -> TokenBucketRateLimiter:
     """Get or create the global rate limiter."""
@@ -245,13 +253,13 @@ def get_rate_limiter() -> TokenBucketRateLimiter:
 class GroqClient(BaseLLMClient):
     """
     Groq API client with smart routing and error handling.
-    
+
     Groq Features:
     - Very fast inference (fastest in the industry)
     - Generous free tier: 30 RPM, 14,400 RPD
     - OpenAI-compatible API format
     - Great for Llama and Mixtral models
-    
+
     Models:
     - llama-3.1-8b-instant: Fast, cheap, good for simple tasks
     - llama-3.3-70b-versatile: Powerful, good for complex tasks
@@ -276,44 +284,41 @@ class GroqClient(BaseLLMClient):
         # Rate limiter (shared instance)
         self.rate_limiter = get_rate_limiter()
 
+        # Failover manager for dynamic model switching
+        self.failover_manager = get_failover_manager()
+
         # Circuit breaker for API calls
         self.circuit_breaker = get_circuit_breaker(
-            "groq_api",
-            failure_threshold=5,
-            recovery_timeout=60.0
+            "groq_api", failure_threshold=5, recovery_timeout=60.0
         )
 
         # Retry configuration - more aggressive for rate limits
         self.retry_config = RetryConfig(
             max_retries=self.config.max_retries,
             initial_delay=2.0,  # Start with longer delay
-            max_delay=120.0,    # Allow longer waits for rate limits
+            max_delay=120.0,  # Allow longer waits for rate limits
             exponential_base=2.0,
-            jitter=True
+            jitter=True,
         )
 
         logger.info(
-            f"GroqClient initialized (user={self.user_id}, "
-            f"budget=${self.user_budget:.4f})"
+            f"GroqClient initialized (user={self.user_id}, " f"budget=${self.user_budget:.4f})"
         )
 
     def get_provider_name(self) -> str:
         return self.PROVIDER_NAME
 
     def _select_model(
-        self,
-        task_type: str,
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None
+        self, task_type: str, complexity_hint: str | None = None, max_latency_ms: int | None = None
     ) -> tuple[str, ModelTier]:
         """
         Select the appropriate model based on task requirements.
-        
+
         Model Selection Strategy (optimized for Groq free tier):
         - Use llama-3.1-8b-instant for most tasks (14.4K RPD vs 1K RPD for 70B)
         - Only use llama-3.3-70b-versatile for truly complex tasks
         - Check rate limit status and downgrade if near limits
-        
+
         Returns:
             Tuple of (model_name, tier)
         """
@@ -326,13 +331,11 @@ class GroqClient(BaseLLMClient):
             "simple_parsing": ModelTier.FAST_CHEAP,
             "format_output": ModelTier.FAST_CHEAP,
             "general": ModelTier.FAST_CHEAP,  # Default to 8B for general tasks
-
             # Medium tasks -> Also use Fast/Cheap for better rate limits
             "paper_analysis": ModelTier.BALANCED,  # 8B is sufficient for analysis
             "summarization": ModelTier.BALANCED,
             "search_planning": ModelTier.BALANCED,
             "relevance_scoring": ModelTier.FAST_CHEAP,
-
             # Complex tasks -> Powerful (70B) - use sparingly!
             "synthesis": ModelTier.POWERFUL,
             "quality_evaluation": ModelTier.BALANCED,  # Downgraded to save 70B quota
@@ -348,16 +351,24 @@ class GroqClient(BaseLLMClient):
         rate_status = self.rate_limiter.get_status(model_name)
 
         # If the selected model is near daily limit, downgrade
-        rpd_usage_pct = rate_status["rpd_used"] / rate_status["rpd_limit"] if rate_status["rpd_limit"] > 0 else 0
+        rpd_usage_pct = (
+            rate_status["rpd_used"] / rate_status["rpd_limit"]
+            if rate_status["rpd_limit"] > 0
+            else 0
+        )
         if rpd_usage_pct >= 0.8 and tier == ModelTier.POWERFUL:
-            logger.warning(f"70B model near daily limit ({rate_status['rpd_used']}/{rate_status['rpd_limit']}), using 8B")
+            logger.warning(
+                f"70B model near daily limit ({rate_status['rpd_used']}/{rate_status['rpd_limit']}), using 8B"
+            )
             tier = ModelTier.BALANCED
 
         # Budget check - downgrade if running low
         budget_usage = self.spent / self.user_budget if self.user_budget > 0 else 0
         if budget_usage >= 0.8:
             tier = ModelTier.FAST_CHEAP
-            logger.warning(f"Budget constraint: Using {tier.value} (${self.spent:.4f}/${self.user_budget:.4f} spent)")
+            logger.warning(
+                f"Budget constraint: Using {tier.value} (${self.spent:.4f}/${self.user_budget:.4f} spent)"
+            )
 
         # Complexity hint override
         if complexity_hint == "high" and tier != ModelTier.POWERFUL and budget_usage < 0.8:
@@ -384,7 +395,7 @@ class GroqClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Send a chat request and return the response text."""
         response = self.chat_with_response(
@@ -392,7 +403,7 @@ class GroqClient(BaseLLMClient):
             task_type=task_type,
             complexity_hint=complexity_hint,
             max_latency_ms=max_latency_ms,
-            **kwargs
+            **kwargs,
         )
         return response.text
 
@@ -402,18 +413,34 @@ class GroqClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> LLMResponse:
         """Send a chat request and return full response with metadata."""
 
-        # Select model
+        # Select model based on task type
         model_name, tier = self._select_model(task_type, complexity_hint, max_latency_ms)
-        logger.info(f"Groq routing: {task_type} -> {model_name} (tier: {tier.value})")
+
+        # Check failover manager for model availability
+        estimated_tokens = len(prompt) // 4
+        failover_decision = self.failover_manager.get_available_model(
+            preferred_model=model_name,
+            prompt_tokens=estimated_tokens,
+        )
+
+        # Use the model selected by failover manager
+        actual_model = failover_decision.selected_model
+        if failover_decision.was_failover:
+            logger.warning(
+                f"Failover active: {model_name} -> {actual_model} "
+                f"(reason: {failover_decision.reason})"
+            )
+
+        logger.info(f"Groq routing: {task_type} -> {actual_model} (original: {model_name})")
 
         start_time = time.time()
 
         try:
-            result = self._make_api_call_with_retry(model_name, prompt, **kwargs)
+            result, used_model = self._make_api_call_with_failover(actual_model, prompt, **kwargs)
 
             latency_ms = int((time.time() - start_time) * 1000)
 
@@ -422,22 +449,25 @@ class GroqClient(BaseLLMClient):
             output_tokens = result.get("usage", {}).get("completion_tokens", 0)
             total_tokens = result.get("usage", {}).get("total_tokens", 0)
 
-            # Calculate cost
-            model_config = GROQ_MODELS.get(tier)
-            if model_config:
-                cost = model_config.estimate_cost(input_tokens, output_tokens)
-            else:
-                cost = 0.0
+            # Calculate cost - find config for the actually used model
+            cost = 0.0
+            for _t, config in GROQ_MODELS.items():
+                if config.name == used_model:
+                    cost = config.estimate_cost(input_tokens, output_tokens)
+                    break
 
             # Record usage
             self.spent += cost
+
+            # Record success for the model that worked
+            self.failover_manager.record_success(used_model)
 
             # Extract response text
             text = result["choices"][0]["message"]["content"]
 
             return LLMResponse(
                 text=text,
-                model=model_name,
+                model=used_model,
                 provider=self.PROVIDER_NAME,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -448,38 +478,149 @@ class GroqClient(BaseLLMClient):
                     "tier": tier.value,
                     "task_type": task_type,
                     "finish_reason": result["choices"][0].get("finish_reason"),
-                }
+                    "original_model": model_name,
+                    "was_failover": used_model != model_name,
+                },
             )
 
         except Exception as e:
-            logger.error(f"Groq chat request failed: {e}")
+            logger.error(f"Groq chat request failed after all failover attempts: {e}")
             raise
 
-    def _make_api_call_with_retry(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
-        """Make API call with retry logic, rate limiting, and circuit breaker."""
+    def _make_api_call_with_failover(
+        self, model: str, prompt: str, max_failover_attempts: int = 3, **kwargs
+    ) -> tuple[dict[str, Any], str]:
+        """
+        Make API call with automatic failover on specific errors.
 
-        # Estimate tokens for rate limiting (rough: 4 chars = 1 token)
-        # Use a more realistic estimate - most responses are <500 tokens
+        This method handles:
+        - 413 Payload Too Large: Failover to model with larger context
+        - 429 Rate Limit: Failover to alternative model (Qwen)
+        - Server errors: Retry with different model
+
+        Args:
+            model: Initial model to try
+            prompt: The prompt to send
+            max_failover_attempts: Maximum number of failover attempts
+            **kwargs: Additional arguments for the API call
+
+        Returns:
+            Tuple of (API response dict, model name that succeeded)
+        """
+        current_model = model
+        attempt = 0
+        last_error = None
+
+        while attempt < max_failover_attempts:
+            try:
+                result = self._make_single_api_call(current_model, prompt, **kwargs)
+                return result, current_model
+
+            except NonRetryableError as e:
+                # Check if this is a failover-able error
+                if "413" in str(e) or "payload too large" in str(e).lower():
+                    # 413 error - try larger model
+                    failover = self.failover_manager.handle_failure(
+                        model=current_model,
+                        reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
+                    )
+                    if failover.selected_model != current_model:
+                        logger.info(
+                            f"413 error on {current_model}, failing over to {failover.selected_model}"
+                        )
+                        current_model = failover.selected_model
+                        attempt += 1
+                        last_error = e
+                        continue
+
+                # Not a failover-able error, re-raise
+                raise
+
+            except RetryableError as e:
+                error_str = str(e).lower()
+
+                # Determine failover reason
+                if "429" in str(e) or "rate limit" in error_str:
+                    failover_reason = FailoverReason.RATE_LIMIT_429
+                    # Try to extract retry-after from error message
+                    retry_after = self._extract_retry_after(str(e))
+                elif "timeout" in error_str:
+                    failover_reason = FailoverReason.TIMEOUT
+                    retry_after = None
+                elif "500" in str(e) or "502" in str(e) or "503" in str(e):
+                    failover_reason = FailoverReason.SERVER_ERROR
+                    retry_after = None
+                else:
+                    # Unknown retryable error - still try failover
+                    failover_reason = FailoverReason.SERVER_ERROR
+                    retry_after = None
+
+                # Get failover decision
+                failover = self.failover_manager.handle_failure(
+                    model=current_model,
+                    reason=failover_reason,
+                    retry_after=retry_after,
+                )
+
+                if failover.selected_model != current_model:
+                    logger.info(
+                        f"{failover_reason.value} on {current_model}, "
+                        f"failing over to {failover.selected_model}"
+                    )
+                    current_model = failover.selected_model
+                    attempt += 1
+                    last_error = e
+
+                    # Small delay before trying new model
+                    time.sleep(0.5)
+                    continue
+                elif failover.cooldown_remaining > 0:
+                    # All models in cooldown, wait and retry
+                    wait_time = min(failover.cooldown_remaining, 30.0)
+                    logger.warning(f"All models in cooldown, waiting {wait_time:.1f}s")
+                    time.sleep(wait_time)
+                    attempt += 1
+                    last_error = e
+                    continue
+
+                # No failover available, re-raise
+                raise
+
+            except Exception as e:
+                # Unexpected error, try failover as server error
+                logger.warning(f"Unexpected error on {current_model}: {e}")
+                failover = self.failover_manager.handle_failure(
+                    model=current_model,
+                    reason=FailoverReason.SERVER_ERROR,
+                )
+
+                if failover.selected_model != current_model and attempt < max_failover_attempts - 1:
+                    current_model = failover.selected_model
+                    attempt += 1
+                    last_error = e
+                    continue
+
+                raise
+
+        # All attempts exhausted
+        if last_error:
+            raise last_error
+        raise RuntimeError(
+            f"Failed to get response after {max_failover_attempts} failover attempts"
+        )
+
+    def _make_single_api_call(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
+        """Make a single API call with rate limiting but no failover."""
+
+        # Estimate tokens for rate limiting
         max_response_tokens = min(kwargs.get("max_tokens", 1024), 1024)
         estimated_tokens = len(prompt) // 4 + max_response_tokens
 
         # Wait if needed to respect rate limits BEFORE making the request
         self.rate_limiter.wait_if_needed(model, estimated_tokens)
 
-        @with_retry(
-            config=self.retry_config,
-            retryable_exceptions=(
-                requests.exceptions.HTTPError,
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError,
-                RetryableError
-            ),
-            non_retryable_exceptions=(NonRetryableError,)
-        )
-        def _call_api():
-            return self.circuit_breaker.call(self._do_api_request, model, prompt, **kwargs)
-
-        result = _call_api()
+        # Make the actual API call (with circuit breaker)
+        result = self.circuit_breaker.call(self._do_api_request, model, prompt, **kwargs)
 
         # Record the request for rate tracking
         total_tokens = result.get("usage", {}).get("total_tokens", estimated_tokens)
@@ -487,13 +628,33 @@ class GroqClient(BaseLLMClient):
 
         return result
 
+    def _extract_retry_after(self, error_message: str) -> float | None:
+        """Extract retry-after value from error message."""
+        import re
+
+        # Look for patterns like "Retry after 60s" or "retry-after: 30"
+        patterns = [
+            r"retry.?after[:\s]+(\d+(?:\.\d+)?)",
+            r"(\d+(?:\.\d+)?)\s*s(?:econds?)?",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, error_message.lower())
+            if match:
+                try:
+                    return float(match.group(1))
+                except ValueError:
+                    pass
+        return None
+
+    def _make_api_call_with_retry(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
+        """Legacy method - now calls _make_api_call_with_failover for backward compatibility."""
+        result, _ = self._make_api_call_with_failover(model, prompt, **kwargs)
+        return result
+
     def _do_api_request(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
         """Execute the actual API request to Groq."""
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         # Respect model context limits and max payload size
         max_tokens = kwargs.get("max_tokens", 4096)
@@ -515,9 +676,7 @@ class GroqClient(BaseLLMClient):
         # Build request payload (OpenAI-compatible format)
         data = {
             "model": model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": max_tokens,
         }
@@ -530,10 +689,7 @@ class GroqClient(BaseLLMClient):
 
         try:
             resp = requests.post(
-                self.BASE_URL,
-                headers=headers,
-                json=data,
-                timeout=self.config.timeout
+                self.BASE_URL, headers=headers, json=data, timeout=self.config.timeout
             )
 
             # Update rate limiter with response headers (even on errors)
@@ -554,32 +710,34 @@ class GroqClient(BaseLLMClient):
                 raise RetryableError(
                     f"Rate limit exceeded. Retry after {retry_after}s",
                     category=ErrorCategory.RATE_LIMIT,
-                    severity="low"
+                    severity="low",
                 )
             elif status_code == 413:
                 # Payload too large - this is a prompt size issue
                 # Try to extract more info
                 try:
-                    error_detail = e.response.json().get("error", {}).get("message", "Payload too large")
+                    error_detail = (
+                        e.response.json().get("error", {}).get("message", "Payload too large")
+                    )
                 except:
                     error_detail = "Payload too large"
                 raise NonRetryableError(
                     f"Payload too large ({status_code}): {error_detail}. "
                     f"Prompt has ~{len(prompt)//4} tokens. Consider reducing input size.",
                     category=ErrorCategory.VALIDATION,
-                    severity="medium"
+                    severity="medium",
                 )
             elif status_code >= 500:
                 raise RetryableError(
                     f"Groq server error ({status_code}): {e}",
                     category=ErrorCategory.SERVER_ERROR,
-                    severity="medium"
+                    severity="medium",
                 )
             elif status_code in (401, 403):
                 raise NonRetryableError(
                     f"Authentication failed ({status_code}): Check GROQ_API_KEY",
                     category=ErrorCategory.CLIENT_ERROR,
-                    severity="high"
+                    severity="high",
                 )
             elif status_code == 400:
                 # Try to extract error message
@@ -590,44 +748,42 @@ class GroqClient(BaseLLMClient):
                 raise NonRetryableError(
                     f"Invalid request ({status_code}): {error_detail}",
                     category=ErrorCategory.VALIDATION,
-                    severity="medium"
+                    severity="medium",
                 )
             else:
                 raise NonRetryableError(
                     f"Client error ({status_code}): {e}",
                     category=ErrorCategory.CLIENT_ERROR,
-                    severity="medium"
+                    severity="medium",
                 )
 
         except requests.exceptions.Timeout as e:
             raise RetryableError(
-                f"Request timeout: {e}",
-                category=ErrorCategory.TIMEOUT,
-                severity="low"
+                f"Request timeout: {e}", category=ErrorCategory.TIMEOUT, severity="low"
             )
 
         except requests.exceptions.ConnectionError as e:
             raise RetryableError(
-                f"Network error: {e}",
-                category=ErrorCategory.NETWORK,
-                severity="medium"
+                f"Network error: {e}", category=ErrorCategory.NETWORK, severity="medium"
             )
 
         except Exception as e:
             logger.error(f"Unexpected error in Groq request: {e}", exc_info=True)
             raise RetryableError(
-                f"Unexpected error: {e}",
-                category=ErrorCategory.UNKNOWN,
-                severity="medium"
+                f"Unexpected error: {e}", category=ErrorCategory.UNKNOWN, severity="medium"
             )
 
     def get_usage_stats(self) -> dict[str, Any]:
-        """Get usage statistics including rate limit status."""
-        # Get rate limit status for common models
+        """Get usage statistics including rate limit and failover status."""
+        # Get rate limit status for all models
         rate_stats = {
             "llama-3.1-8b-instant": self.rate_limiter.get_status("llama-3.1-8b-instant"),
             "llama-3.3-70b-versatile": self.rate_limiter.get_status("llama-3.3-70b-versatile"),
+            "qwen/qwen3-32b": self.rate_limiter.get_status("qwen/qwen3-32b"),
         }
+
+        # Get failover status
+        failover_stats = self.failover_manager.get_status()
 
         return {
             "provider": self.PROVIDER_NAME,
@@ -636,7 +792,8 @@ class GroqClient(BaseLLMClient):
             "spent": self.spent,
             "remaining": self.user_budget - self.spent,
             "usage_percent": (self.spent / self.user_budget * 100) if self.user_budget > 0 else 0,
-            "rate_limits": rate_stats
+            "rate_limits": rate_stats,
+            "failover_status": failover_stats,
         }
 
     def reset_budget(self, new_budget: float | None = None) -> None:

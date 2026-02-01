@@ -11,22 +11,25 @@ class ModelTier(str, Enum):
     Model tiers representing different cost/performance tradeoffs.
     Used by the router to select appropriate models for tasks.
     """
-    FAST_CHEAP = "fast_cheap"       # Simple tasks, lowest cost
-    BALANCED = "balanced"            # Most tasks, balanced cost/performance
-    POWERFUL = "powerful"            # Complex reasoning, highest quality
+
+    FAST_CHEAP = "fast_cheap"  # Simple tasks, lowest cost
+    BALANCED = "balanced"  # Most tasks, balanced cost/performance
+    POWERFUL = "powerful"  # Complex reasoning, highest quality
+    FALLBACK = "fallback"  # Fallback when other models are rate-limited
 
 
 @dataclass
 class ModelConfig:
     """Configuration for a specific model."""
-    name: str                           # Model name/ID
-    provider: str                       # Provider name (groq, gemini, openai)
-    tier: ModelTier                     # Performance tier
-    cost_per_1k_input: float           # Cost per 1K input tokens (USD)
-    cost_per_1k_output: float          # Cost per 1K output tokens (USD)
-    base_latency_ms: int               # Estimated base latency
-    context_window: int                # Max context window size
-    supports_streaming: bool = True    # Whether streaming is supported
+
+    name: str  # Model name/ID
+    provider: str  # Provider name (groq, gemini, openai)
+    tier: ModelTier  # Performance tier
+    cost_per_1k_input: float  # Cost per 1K input tokens (USD)
+    cost_per_1k_output: float  # Cost per 1K output tokens (USD)
+    base_latency_ms: int  # Estimated base latency
+    context_window: int  # Max context window size
+    supports_streaming: bool = True  # Whether streaming is supported
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """Estimate cost for a request."""
@@ -46,16 +49,16 @@ class ModelConfig:
 
 GROQ_MODELS: dict[ModelTier, ModelConfig] = {
     ModelTier.FAST_CHEAP: ModelConfig(
-        name="llama-3.1-8b-instant",      # Best for high volume: 14.4K RPD!
+        name="llama-3.1-8b-instant",  # Best for high volume: 14.4K RPD!
         provider="groq",
         tier=ModelTier.FAST_CHEAP,
-        cost_per_1k_input=0.00005,        # $0.05 / 1M tokens
-        cost_per_1k_output=0.00008,       # $0.08 / 1M tokens
-        base_latency_ms=100,              # Very fast!
+        cost_per_1k_input=0.00005,  # $0.05 / 1M tokens
+        cost_per_1k_output=0.00008,  # $0.08 / 1M tokens
+        base_latency_ms=100,  # Very fast!
         context_window=131072,
     ),
     ModelTier.BALANCED: ModelConfig(
-        name="llama-3.1-8b-instant",       # Use 8B for balanced too (better rate limits)
+        name="llama-3.1-8b-instant",  # Use 8B for balanced too (better rate limits)
         provider="groq",
         tier=ModelTier.BALANCED,
         cost_per_1k_input=0.00005,
@@ -64,13 +67,22 @@ GROQ_MODELS: dict[ModelTier, ModelConfig] = {
         context_window=131072,
     ),
     ModelTier.POWERFUL: ModelConfig(
-        name="llama-3.3-70b-versatile",   # 70B only for truly complex tasks
+        name="llama-3.3-70b-versatile",  # 70B only for truly complex tasks
         provider="groq",
         tier=ModelTier.POWERFUL,
-        cost_per_1k_input=0.00059,        # $0.59 / 1M tokens
-        cost_per_1k_output=0.00079,       # $0.79 / 1M tokens
+        cost_per_1k_input=0.00059,  # $0.59 / 1M tokens
+        cost_per_1k_output=0.00079,  # $0.79 / 1M tokens
         base_latency_ms=300,
         context_window=131072,
+    ),
+    ModelTier.FALLBACK: ModelConfig(
+        name="qwen/qwen3-32b",  # Qwen fallback: 60 RPM, good for rate limit overflow
+        provider="groq",
+        tier=ModelTier.FALLBACK,
+        cost_per_1k_input=0.00010,  # Estimated cost
+        cost_per_1k_output=0.00015,
+        base_latency_ms=200,
+        context_window=32768,  # Smaller context window
     ),
 }
 
@@ -85,7 +97,7 @@ GEMINI_MODELS: dict[ModelTier, ModelConfig] = {
         name="gemini-2.0-flash-lite",
         provider="gemini",
         tier=ModelTier.FAST_CHEAP,
-        cost_per_1k_input=0.00001,      # Very cheap
+        cost_per_1k_input=0.00001,  # Very cheap
         cost_per_1k_output=0.00001,
         base_latency_ms=200,
         context_window=1048576,
@@ -160,11 +172,11 @@ PROVIDER_MODELS = {
 def get_model_config(provider: str, tier: ModelTier) -> ModelConfig | None:
     """
     Get model configuration for a provider and tier.
-    
+
     Args:
         provider: Provider name (groq, gemini, openai)
         tier: Model tier
-        
+
     Returns:
         ModelConfig or None if not found
     """

@@ -1,7 +1,9 @@
 
 docs/
+.vscode/
 .env
 .github/copilot-instructions.md
+learnings.md
 venv/
 __pycache__/
 test.db
