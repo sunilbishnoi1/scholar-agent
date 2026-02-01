@@ -41,7 +41,7 @@ class EventType(str, Enum):
 class AgentEvent:
     """
     Standardized event format for agent updates.
-    
+
     Attributes:
         type: The type of event
         agent: Which agent generated this event (planner, retriever, analyzer, synthesizer)
@@ -51,6 +51,7 @@ class AgentEvent:
         data: Additional event-specific data
         timestamp: When the event occurred
     """
+
     type: EventType
     agent: str | None = None
     project_id: str | None = None
@@ -63,7 +64,7 @@ class AgentEvent:
         """Convert to dictionary for JSON serialization."""
         result = {
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
 
         if self.agent:
@@ -88,11 +89,9 @@ class AgentEvent:
 # Event factory functions for common events
 # =========================================================================
 
+
 def create_status_event(
-    project_id: str,
-    agent: str,
-    status: str,
-    message: str = None
+    project_id: str, agent: str, status: str, message: str = None
 ) -> AgentEvent:
     """Create a status update event."""
     return AgentEvent(
@@ -100,7 +99,7 @@ def create_status_event(
         agent=agent,
         project_id=project_id,
         message=message or f"{agent} is now {status}",
-        data={"status": status}
+        data={"status": status},
     )
 
 
@@ -110,7 +109,7 @@ def create_progress_event(
     progress: float,
     message: str = None,
     current: int = None,
-    total: int = None
+    total: int = None,
 ) -> AgentEvent:
     """Create a progress update event."""
     data = {"progress_percent": progress}
@@ -125,31 +124,23 @@ def create_progress_event(
         project_id=project_id,
         progress=progress,
         message=message,
-        data=data
+        data=data,
     )
 
 
-def create_log_event(
-    project_id: str,
-    agent: str,
-    message: str,
-    level: str = "info"
-) -> AgentEvent:
+def create_log_event(project_id: str, agent: str, message: str, level: str = "info") -> AgentEvent:
     """Create a log message event."""
     return AgentEvent(
         type=EventType.LOG_MESSAGE,
         agent=agent,
         project_id=project_id,
         message=message,
-        data={"level": level}
+        data={"level": level},
     )
 
 
 def create_paper_event(
-    project_id: str,
-    event_type: EventType,
-    paper_title: str,
-    paper_data: dict = None
+    project_id: str, event_type: EventType, paper_title: str, paper_data: dict = None
 ) -> AgentEvent:
     """Create a paper-related event."""
     data = {"paper_title": paper_title}
@@ -161,15 +152,12 @@ def create_paper_event(
         agent="retriever" if event_type == EventType.PAPER_FOUND else "analyzer",
         project_id=project_id,
         message=f"Paper: {paper_title[:50]}...",
-        data=data
+        data=data,
     )
 
 
 def create_completion_event(
-    project_id: str,
-    success: bool,
-    summary: dict = None,
-    error_message: str = None
+    project_id: str, success: bool, summary: dict = None, error_message: str = None
 ) -> AgentEvent:
     """Create a project completion event."""
     if success:
@@ -178,14 +166,14 @@ def create_completion_event(
             project_id=project_id,
             message="Literature review completed successfully",
             progress=100,
-            data=summary or {}
+            data=summary or {},
         )
     else:
         return AgentEvent(
             type=EventType.PROJECT_ERROR,
             project_id=project_id,
             message=error_message or "An error occurred during processing",
-            data={"error": error_message}
+            data={"error": error_message},
         )
 
 
@@ -193,18 +181,15 @@ def create_completion_event(
 # Broadcasting utilities (integrates with Redis pub/sub)
 # =========================================================================
 
-async def broadcast_agent_update(
-    project_id: str,
-    event: AgentEvent,
-    use_redis: bool = True
-):
+
+async def broadcast_agent_update(project_id: str, event: AgentEvent, use_redis: bool = True):
     """
     Broadcast an agent event to all interested clients.
-    
+
     This function handles both:
     1. Direct WebSocket broadcast (for local connections)
     2. Redis pub/sub broadcast (for distributed deployments)
-    
+
     Args:
         project_id: The project to broadcast to
         event: The event to broadcast
@@ -222,6 +207,7 @@ async def broadcast_agent_update(
     if use_redis:
         try:
             from cache import get_cache
+
             cache = get_cache()
             channel = f"project:{project_id}:updates"
             cache.publish(channel, event_dict)
@@ -229,18 +215,16 @@ async def broadcast_agent_update(
             logger.warning(f"Redis publish failed: {e}")
 
 
-def sync_broadcast_agent_update(
-    project_id: str,
-    event: AgentEvent
-):
+def sync_broadcast_agent_update(project_id: str, event: AgentEvent):
     """
     Synchronous version of broadcast for use in Celery tasks.
-    
+
     Uses Redis pub/sub to notify WebSocket servers which then
     broadcast to connected clients.
     """
     try:
         from cache import get_cache
+
         cache = get_cache()
         channel = f"project:{project_id}:updates"
         event_dict = event.to_dict()
@@ -254,18 +238,19 @@ def sync_broadcast_agent_update(
 # Agent Progress Tracker (helper class for Celery tasks)
 # =========================================================================
 
+
 class AgentProgressTracker:
     """
     Helper class for tracking and broadcasting agent progress in Celery tasks.
-    
+
     Usage:
         tracker = AgentProgressTracker(project_id)
-        
+
         tracker.start_agent("planner")
         tracker.log("Generating search terms...")
         tracker.update_progress(50)
         tracker.complete_agent("planner")
-        
+
         tracker.start_agent("retriever")
         for i, paper in enumerate(papers):
             tracker.paper_found(paper["title"])
@@ -275,10 +260,10 @@ class AgentProgressTracker:
 
     AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer"]
     AGENT_WEIGHTS = {
-        "planner": 10,      # 10% of total progress
-        "retriever": 20,    # 20% of total progress
-        "analyzer": 50,     # 50% of total progress
-        "synthesizer": 20   # 20% of total progress
+        "planner": 10,  # 10% of total progress
+        "retriever": 20,  # 20% of total progress
+        "analyzer": 50,  # 50% of total progress
+        "synthesizer": 20,  # 20% of total progress
     }
 
     def __init__(self, project_id: str):
@@ -313,7 +298,7 @@ class AgentProgressTracker:
             project_id=self.project_id,
             message=message or f"{agent.capitalize()} agent started",
             progress=self._calculate_total_progress(),
-            data={"agent": agent, "status": "running"}
+            data={"agent": agent, "status": "running"},
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -329,7 +314,7 @@ class AgentProgressTracker:
             project_id=self.project_id,
             message=message or f"{agent.capitalize()} agent completed",
             progress=self._calculate_total_progress(),
-            data={"agent": agent, "status": "completed"}
+            data={"agent": agent, "status": "completed"},
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -346,7 +331,7 @@ class AgentProgressTracker:
             progress=self._calculate_total_progress(),
             message=message,
             current=int(agent_progress),
-            total=100
+            total=100,
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -356,7 +341,7 @@ class AgentProgressTracker:
             project_id=self.project_id,
             agent=self.current_agent or "system",
             message=message,
-            level=level
+            level=level,
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -366,7 +351,7 @@ class AgentProgressTracker:
             project_id=self.project_id,
             event_type=EventType.PAPER_FOUND,
             paper_title=title,
-            paper_data=data
+            paper_data=data,
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -380,7 +365,7 @@ class AgentProgressTracker:
             project_id=self.project_id,
             event_type=EventType.PAPER_ANALYZED,
             paper_title=title,
-            paper_data=data
+            paper_data=data,
         )
         sync_broadcast_agent_update(self.project_id, event)
 
@@ -392,16 +377,14 @@ class AgentProgressTracker:
             summary={
                 "papers_analyzed": papers_analyzed,
                 "synthesis_words": synthesis_words,
-                "agents_completed": self.completed_agents
-            }
+                "agents_completed": self.completed_agents,
+            },
         )
         sync_broadcast_agent_update(self.project_id, event)
 
     def error(self, error_message: str):
         """Signal project error."""
         event = create_completion_event(
-            project_id=self.project_id,
-            success=False,
-            error_message=error_message
+            project_id=self.project_id, success=False, error_message=error_message
         )
         sync_broadcast_agent_update(self.project_id, event)

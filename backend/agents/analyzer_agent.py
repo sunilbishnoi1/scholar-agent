@@ -13,7 +13,7 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
     - Scoring paper relevance to research question
     - Extracting key findings, methodology, and limitations
     - Filtering high-quality papers for synthesis
-    
+
     Uses the ReAct pattern for each paper analysis.
     """
 
@@ -26,28 +26,28 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
         self.register_tool(
             "score_relevance",
             lambda **kwargs: score_paper_relevance(self.llm_client, **kwargs),
-            "Score a paper's relevance to the research question"
+            "Score a paper's relevance to the research question",
         )
         self.register_tool(
             "extract_insights",
             lambda **kwargs: extract_paper_insights(self.llm_client, **kwargs),
-            "Extract detailed insights from a paper"
+            "Extract detailed insights from a paper",
         )
 
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the analyzer agent.
-        
+
         Workflow:
         1. For each paper in state:
            a. Score relevance
            b. If relevant, extract insights
         2. Filter high-quality papers
         3. Update state with analyses
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             Updated state with analyzed papers
         """
@@ -81,7 +81,7 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                     "score_relevance",
                     title=paper["title"],
                     abstract=paper["abstract"],
-                    research_question=research_question
+                    research_question=research_question,
                 )
 
                 relevance_score = 0.0
@@ -100,55 +100,63 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
                         "extract_insights",
                         title=paper["title"],
                         abstract=paper["abstract"],
-                        research_question=research_question
+                        research_question=research_question,
                     )
 
                     if insights_result.success:
                         paper["analysis"] = {
                             "relevance_score": relevance_score,
                             "justification": justification,
-                            **insights_result.data
+                            **insights_result.data,
                         }
                         high_quality_papers.append(paper)
                     else:
                         paper["analysis"] = {
                             "relevance_score": relevance_score,
                             "justification": justification,
-                            "error": insights_result.error
+                            "error": insights_result.error,
                         }
                 else:
                     paper["analysis"] = {
                         "relevance_score": relevance_score,
                         "justification": justification,
                         "skipped": True,
-                        "reason": "Below relevance threshold"
+                        "reason": "Below relevance threshold",
                     }
 
                 analyzed_papers.append(paper)
 
                 # Rate limiting - avoid overwhelming the LLM
                 import asyncio
+
                 await asyncio.sleep(1.0)
 
             # Update state
             state["analyzed_papers"] = analyzed_papers
             state["high_quality_papers"] = high_quality_papers
 
-            state["messages"] = [self._create_message(
-                "analyze_papers",
-                f"Analyzed {len(analyzed_papers)} papers, {len(high_quality_papers)} above threshold"
-            )]
+            state["messages"] = [
+                self._create_message(
+                    "analyze_papers",
+                    f"Analyzed {len(analyzed_papers)} papers, {len(high_quality_papers)} above threshold",
+                )
+            ]
 
             result = AgentResult(
                 success=True,
                 data={
                     "total_analyzed": len(analyzed_papers),
-                    "high_quality": len(high_quality_papers)
+                    "high_quality": len(high_quality_papers),
                 },
                 metadata={
                     "relevance_threshold": relevance_threshold,
-                    "avg_relevance": sum(p.get("relevance_score", 0) or 0 for p in analyzed_papers) / len(analyzed_papers) if analyzed_papers else 0
-                }
+                    "avg_relevance": (
+                        sum(p.get("relevance_score", 0) or 0 for p in analyzed_papers)
+                        / len(analyzed_papers)
+                        if analyzed_papers
+                        else 0
+                    ),
+                },
             )
             self._log_complete(state, result)
 
@@ -161,7 +169,7 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
     def analyze_paper(self, title: str, abstract: str, content: str, research_question: str) -> str:
         """
         Legacy method for backward compatibility with existing code.
-        
+
         Returns raw LLM response string.
         """
         prompt = f"""You are a Paper Analyzer agent specializing in academic content extraction.

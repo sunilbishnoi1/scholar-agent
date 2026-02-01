@@ -1,4 +1,3 @@
-
 class PaperAnalyzerAgent:
     def __init__(self, llm_client):
         self.llm_client = llm_client

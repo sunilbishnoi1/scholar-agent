@@ -25,8 +25,9 @@ class TestIntelligentCache:
     @pytest.fixture
     def cache_with_mock_redis(self, mock_redis):
         """Create an IntelligentCache with mocked Redis."""
-        with patch('cache.redis_cache.redis.from_url', return_value=mock_redis):
+        with patch("cache.redis_cache.redis.from_url", return_value=mock_redis):
             from cache.redis_cache import IntelligentCache
+
             cache = IntelligentCache("redis://localhost:6379/0")
             return cache
 
@@ -71,6 +72,7 @@ class TestIntelligentCache:
         mock_redis.get.return_value = json.dumps(cached_data).encode()
 
         compute_called = False
+
         def compute_fn():
             nonlocal compute_called
             compute_called = True
@@ -133,7 +135,7 @@ class TestCacheDecorators:
     @pytest.fixture
     def mock_cache(self):
         """Create a mock cache instance."""
-        with patch('cache.redis_cache.redis.from_url') as mock_redis:
+        with patch("cache.redis_cache.redis.from_url") as mock_redis:
             mock_client = MagicMock()
             mock_client.ping.return_value = True
             mock_client.get.return_value = None
@@ -141,6 +143,7 @@ class TestCacheDecorators:
             mock_redis.return_value = mock_client
 
             from cache.redis_cache import IntelligentCache
+
             cache = IntelligentCache()
             return cache, mock_client
 
@@ -207,7 +210,7 @@ class TestGetCacheSingleton:
         # Reset to ensure clean state
         reset_cache()
 
-        with patch('cache.redis_cache.redis.from_url') as mock_redis:
+        with patch("cache.redis_cache.redis.from_url") as mock_redis:
             mock_client = MagicMock()
             mock_client.ping.return_value = True
             mock_redis.return_value = mock_client

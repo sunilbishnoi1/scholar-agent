@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMConfig:
     """Configuration for LLM client."""
+
     api_key: str | None = None
     user_budget: float = 1.0
     user_id: str = "default"
@@ -27,6 +28,7 @@ class LLMConfig:
 @dataclass
 class LLMResponse:
     """Standardized response from any LLM provider."""
+
     text: str
     model: str
     provider: str
@@ -47,10 +49,10 @@ class LLMResponse:
 class BaseLLMClient(ABC):
     """
     Abstract base class for all LLM provider clients.
-    
+
     All LLM providers (Groq, Gemini, OpenAI, Anthropic, etc.) must implement
     this interface to work with our agent system.
-    
+
     This abstraction enables:
     - Easy provider switching via configuration
     - Consistent API across all providers
@@ -61,7 +63,7 @@ class BaseLLMClient(ABC):
     def __init__(self, config: LLMConfig | None = None):
         """
         Initialize the LLM client.
-        
+
         Args:
             config: Configuration for the client
         """
@@ -83,23 +85,23 @@ class BaseLLMClient(ABC):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """
         Send a chat request to the LLM.
-        
+
         This is the main method that agents use to interact with the LLM.
-        
+
         Args:
             prompt: The prompt text to send
             task_type: Type of task for routing (e.g., "synthesis", "extract_keywords")
             complexity_hint: Optional complexity hint ("low", "medium", "high")
             max_latency_ms: Optional maximum latency requirement
             **kwargs: Provider-specific parameters
-            
+
         Returns:
             Response text from the LLM
-            
+
         Raises:
             RetryableError: For transient errors after retries exhausted
             NonRetryableError: For permanent errors (e.g., invalid API key)
@@ -113,20 +115,20 @@ class BaseLLMClient(ABC):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> LLMResponse:
         """
         Send a chat request and get full response with metadata.
-        
+
         Use this when you need token counts, cost estimates, etc.
-        
+
         Args:
             prompt: The prompt text to send
             task_type: Type of task for routing
             complexity_hint: Optional complexity hint
             max_latency_ms: Optional maximum latency requirement
             **kwargs: Provider-specific parameters
-            
+
         Returns:
             LLMResponse with text and metadata
         """
@@ -141,7 +143,7 @@ class BaseLLMClient(ABC):
     def get_usage_stats(self) -> dict[str, Any]:
         """
         Get usage statistics for this client.
-        
+
         Returns:
             Dictionary with usage stats (spent, remaining budget, etc.)
         """
@@ -151,7 +153,7 @@ class BaseLLMClient(ABC):
     def reset_budget(self, new_budget: float | None = None) -> None:
         """
         Reset budget tracking.
-        
+
         Args:
             new_budget: Optional new budget amount
         """
@@ -160,7 +162,7 @@ class BaseLLMClient(ABC):
     def is_available(self) -> bool:
         """
         Check if the provider is available (API key configured, etc.).
-        
+
         Returns:
             True if the provider can be used
         """
@@ -169,11 +171,11 @@ class BaseLLMClient(ABC):
     def estimate_cost(self, prompt: str, task_type: str = "general") -> float:
         """
         Estimate the cost of a request before making it.
-        
+
         Args:
             prompt: The prompt text
             task_type: Type of task
-            
+
         Returns:
             Estimated cost in USD
         """

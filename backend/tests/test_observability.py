@@ -47,7 +47,7 @@ class TestStructuredLogger:
             cost_usd=0.00015,
             prompt_preview="Test prompt...",
             response_preview="Test response...",
-            success=True
+            success=True,
         )
 
         # Should not raise
@@ -64,7 +64,7 @@ class TestStructuredLogger:
             duration_ms=250.0,
             success=True,
             input_summary="paper_title=Test Paper",
-            output_summary="score=85"
+            output_summary="score=85",
         )
 
         # Should not raise
@@ -188,6 +188,7 @@ class TestGlobalTracer:
 
     def test_trace_llm_convenience_decorator(self):
         """trace_llm decorator should work."""
+
         @trace_llm("test_agent")
         def test_func(prompt: str) -> str:
             return "response"
@@ -197,6 +198,7 @@ class TestGlobalTracer:
 
     def test_trace_step_convenience_decorator(self):
         """trace_step decorator should work."""
+
         @trace_step("test_agent", "test_action")
         def test_func(value: int) -> int:
             return value + 1
@@ -221,7 +223,7 @@ class TestLLMTrace:
             cost_usd=0.00015,
             prompt_preview="Test...",
             response_preview="Response...",
-            success=True
+            success=True,
         )
 
         assert trace.trace_id == "trace-123"
@@ -244,7 +246,7 @@ class TestLLMTrace:
             prompt_preview="Test...",
             response_preview="",
             success=False,
-            error="API rate limit exceeded"
+            error="API rate limit exceeded",
         )
 
         assert trace.success is False
@@ -263,7 +265,7 @@ class TestAgentTrace:
             duration_ms=2500.0,
             success=True,
             input_summary="subtopic=Introduction",
-            output_summary="Generated 500 words..."
+            output_summary="Generated 500 words...",
         )
 
         assert trace.trace_id == "trace-789"

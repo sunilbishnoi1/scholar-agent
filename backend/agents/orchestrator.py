@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 class ResearchOrchestrator:
     """
     Orchestrates the research literature review pipeline using LangGraph.
-    
+
     The pipeline follows this flow:
-    
+
     ┌─────────┐   ┌───────────┐   ┌──────────┐   ┌─────────────┐   ┌─────────────────┐
     │ Planner │──▶│ Retriever │──▶│ Analyzer │──▶│ Synthesizer │──▶│ Quality Checker │
     └─────────┘   └───────────┘   └──────────┘   └─────────────┘   └────────┬────────┘
@@ -35,7 +35,7 @@ class ResearchOrchestrator:
                                        │         └────┬────┘
                                        │              │ Yes (quality < threshold)
                                        └──────────────┘
-    
+
     Key Features:
     - State machine-based orchestration
     - Conditional routing based on quality scores
@@ -45,13 +45,11 @@ class ResearchOrchestrator:
     """
 
     def __init__(
-        self,
-        llm_client,
-        progress_callback: Callable[[str, str, float], None] | None = None
+        self, llm_client, progress_callback: Callable[[str, str, float], None] | None = None
     ):
         """
         Initialize the orchestrator.
-        
+
         Args:
             llm_client: The LLM client (e.g., GeminiClient) for agent use
             progress_callback: Optional callback for progress updates
@@ -75,7 +73,7 @@ class ResearchOrchestrator:
     def _build_graph(self) -> StateGraph:
         """
         Build the LangGraph state machine.
-        
+
         Returns:
             Compiled StateGraph ready for execution
         """
@@ -104,8 +102,8 @@ class ResearchOrchestrator:
             self._should_continue_or_end,
             {
                 "refine": "planner",  # Loop back to planner if quality is low
-                "complete": END       # End if quality is acceptable
-            }
+                "complete": END,  # End if quality is acceptable
+            },
         )
 
         return workflow.compile()
@@ -139,12 +137,12 @@ class ResearchOrchestrator:
     def _should_continue_or_end(self, state: AgentState) -> Literal["refine", "complete"]:
         """
         Decide whether to refine the synthesis or complete the pipeline.
-        
+
         This is the key decision point that enables iterative improvement.
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             "refine" to loop back to planner, "complete" to end
         """
@@ -153,7 +151,9 @@ class ResearchOrchestrator:
         max_iterations = state.get("max_iterations", 3)
 
         if status == "needs_refinement" and iteration < max_iterations:
-            logger.info(f"Quality check failed, refining (iteration {iteration + 1}/{max_iterations})")
+            logger.info(
+                f"Quality check failed, refining (iteration {iteration + 1}/{max_iterations})"
+            )
             # Increment iteration counter for next loop
             state["iteration"] = iteration + 1
             return "refine"
@@ -180,11 +180,11 @@ class ResearchOrchestrator:
         max_iterations: int = 3,
         relevance_threshold: float = 60.0,
         academic_level: str = "graduate",
-        target_word_count: int = 500
+        target_word_count: int = 500,
     ) -> AgentState:
         """
         Run the complete literature review pipeline.
-        
+
         Args:
             project_id: Database ID of the research project
             user_id: Database ID of the user
@@ -195,7 +195,7 @@ class ResearchOrchestrator:
             relevance_threshold: Minimum relevance score (0-100)
             academic_level: Academic level for writing style
             target_word_count: Target word count for synthesis
-            
+
         Returns:
             Final AgentState with all results
         """
@@ -211,7 +211,7 @@ class ResearchOrchestrator:
             max_iterations=max_iterations,
             relevance_threshold=relevance_threshold,
             academic_level=academic_level,
-            target_word_count=target_word_count
+            target_word_count=target_word_count,
         )
 
         self._report_progress("orchestrator", "Starting pipeline...", 0)
@@ -237,35 +237,32 @@ class ResearchOrchestrator:
             return initial_state
 
     def run_sync(
-        self,
-        project_id: str,
-        user_id: str,
-        title: str,
-        research_question: str,
-        **kwargs
+        self, project_id: str, user_id: str, title: str, research_question: str, **kwargs
     ) -> AgentState:
         """
         Synchronous wrapper for running the pipeline.
-        
+
         Useful for Celery tasks and other sync contexts.
         """
-        return asyncio.run(self.run(
-            project_id=project_id,
-            user_id=user_id,
-            title=title,
-            research_question=research_question,
-            **kwargs
-        ))
+        return asyncio.run(
+            self.run(
+                project_id=project_id,
+                user_id=user_id,
+                title=title,
+                research_question=research_question,
+                **kwargs,
+            )
+        )
 
 
 def create_orchestrator(llm_client, progress_callback=None) -> ResearchOrchestrator:
     """
     Factory function to create a ResearchOrchestrator.
-    
+
     Args:
         llm_client: The LLM client to use
         progress_callback: Optional progress callback
-        
+
     Returns:
         Configured ResearchOrchestrator instance
     """

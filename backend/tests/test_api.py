@@ -18,6 +18,7 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_api.db"
 # Fixtures
 # ============================================
 
+
 @pytest.fixture(scope="module")
 def setup_test_db():
     """Create test database tables once per test module."""
@@ -25,10 +26,7 @@ def setup_test_db():
 
     from models.database import Base
 
-    engine = create_engine(
-        "sqlite:///./test_api.db",
-        connect_args={"check_same_thread": False}
-    )
+    engine = create_engine("sqlite:///./test_api.db", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     yield engine
     # Cleanup after all tests in module
@@ -40,6 +38,7 @@ def client(setup_test_db):
     """Create a test client with test database."""
     # Import after setting env var
     from main import app
+
     return TestClient(app)
 
 
@@ -56,13 +55,14 @@ def mock_db_session():
 def mock_user():
     """Create a mock authenticated user."""
     from models.database import User
+
     user = User(
         id="test-user-123",
         email="test@example.com",
         name="Test User",
         hashed_password="hashed_password",
         tier="free",
-        monthly_budget_usd=1.0
+        monthly_budget_usd=1.0,
     )
     return user
 
@@ -71,6 +71,7 @@ def mock_user():
 def mock_project():
     """Create a mock research project."""
     from models.database import ResearchProject
+
     project = ResearchProject(
         id="test-project-456",
         user_id="test-user-123",
@@ -80,7 +81,7 @@ def mock_project():
         subtopics=["Adaptive Learning", "Assessment"],
         status="created",
         total_papers_found=0,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     return project
 
@@ -94,8 +95,7 @@ def auth_headers(client, mock_user):
     import auth
 
     token = auth.create_access_token(
-        data={"sub": mock_user.email},
-        expires_delta=timedelta(minutes=30)
+        data={"sub": mock_user.email}, expires_delta=timedelta(minutes=30)
     )
     return {"Authorization": f"Bearer {token}"}
 
@@ -128,13 +128,14 @@ def authenticated_client(setup_test_db, mock_user, mock_project):
 # Authentication Tests
 # ============================================
 
+
 class TestAuthenticationEndpoints:
     """Tests for authentication API endpoints."""
 
     def test_register_new_user_success(self, client, mock_db_session):
         """Test successful user registration."""
-        with patch('main.get_db', return_value=iter([mock_db_session])):
-            with patch('db.get_db', return_value=iter([mock_db_session])):
+        with patch("main.get_db", return_value=iter([mock_db_session])):
+            with patch("db.get_db", return_value=iter([mock_db_session])):
                 mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
                 response = client.post(
@@ -142,8 +143,8 @@ class TestAuthenticationEndpoints:
                     json={
                         "email": "newuser@example.com",
                         "password": "securepassword123",
-                        "name": "New User"
-                    }
+                        "name": "New User",
+                    },
                 )
 
                 # May succeed or fail based on db mock setup
@@ -162,11 +163,7 @@ class TestAuthenticationEndpoints:
         client = TestClient(app)
         response = client.post(
             "/api/auth/register",
-            json={
-                "email": mock_user.email,
-                "password": "password123",
-                "name": "Test User"
-            }
+            json={"email": mock_user.email, "password": "password123", "name": "Test User"},
         )
 
         app.dependency_overrides.clear()
@@ -177,11 +174,7 @@ class TestAuthenticationEndpoints:
         """Test that registration with invalid email fails."""
         response = client.post(
             "/api/auth/register",
-            json={
-                "email": "not-an-email",
-                "password": "password123",
-                "name": "Test"
-            }
+            json={"email": "not-an-email", "password": "password123", "name": "Test"},
         )
 
         assert response.status_code == 422  # Validation error
@@ -201,11 +194,7 @@ class TestAuthenticationEndpoints:
 
         client = TestClient(app)
         response = client.post(
-            "/api/auth/token",
-            data={
-                "username": mock_user.email,
-                "password": "testpassword"
-            }
+            "/api/auth/token", data={"username": mock_user.email, "password": "testpassword"}
         )
 
         app.dependency_overrides.clear()
@@ -217,34 +206,31 @@ class TestAuthenticationEndpoints:
     def test_login_wrong_password_fails(self, client, mock_db_session, mock_user):
         """Test login with wrong password fails."""
         import auth
+
         mock_user.hashed_password = auth.get_password_hash("correctpassword")
 
-        with patch('main.get_db', return_value=iter([mock_db_session])):
-            with patch('db.get_db', return_value=iter([mock_db_session])):
-                mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
+        with patch("main.get_db", return_value=iter([mock_db_session])):
+            with patch("db.get_db", return_value=iter([mock_db_session])):
+                mock_db_session.query.return_value.filter.return_value.first.return_value = (
+                    mock_user
+                )
 
                 response = client.post(
                     "/api/auth/token",
-                    data={
-                        "username": mock_user.email,
-                        "password": "wrongpassword"
-                    }
+                    data={"username": mock_user.email, "password": "wrongpassword"},
                 )
 
                 assert response.status_code == 401
 
     def test_login_nonexistent_user_fails(self, client, mock_db_session):
         """Test login with non-existent user fails."""
-        with patch('main.get_db', return_value=iter([mock_db_session])):
-            with patch('db.get_db', return_value=iter([mock_db_session])):
+        with patch("main.get_db", return_value=iter([mock_db_session])):
+            with patch("db.get_db", return_value=iter([mock_db_session])):
                 mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
                 response = client.post(
                     "/api/auth/token",
-                    data={
-                        "username": "nonexistent@example.com",
-                        "password": "password"
-                    }
+                    data={"username": "nonexistent@example.com", "password": "password"},
                 )
 
                 assert response.status_code == 401
@@ -267,6 +253,7 @@ class TestAuthenticationEndpoints:
 # ============================================
 # Projects Tests
 # ============================================
+
 
 class TestProjectsEndpoints:
     """Tests for project management API endpoints."""
@@ -309,21 +296,18 @@ class TestProjectsEndpoints:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         # Mock the LLM client and PlannerAgent
-        with patch('main.get_llm_client') as mock_get_llm:
-            with patch('main.ResearchPlannerAgent') as mock_planner:
+        with patch("main.get_llm_client") as mock_get_llm:
+            with patch("main.ResearchPlannerAgent") as mock_planner:
                 mock_planner_instance = mock_planner.return_value
                 mock_planner_instance.generate_initial_plan.return_value = {
                     "keywords": ["AI", "education"],
-                    "subtopics": ["Learning"]
+                    "subtopics": ["Learning"],
                 }
 
                 client = TestClient(app)
                 response = client.post(
                     "/api/projects",
-                    json={
-                        "title": "Test Project",
-                        "research_question": "How does AI work?"
-                    }
+                    json={"title": "Test Project", "research_question": "How does AI work?"},
                 )
 
                 app.dependency_overrides.clear()
@@ -337,7 +321,7 @@ class TestProjectsEndpoints:
             json={
                 "title": "Only Title"
                 # Missing research_question
-            }
+            },
         )
 
         assert response.status_code == 422  # Validation error
@@ -368,7 +352,7 @@ class TestProjectsEndpoints:
 
     def test_start_project_review_success(self, authenticated_client, mock_project):
         """Test starting a literature review."""
-        with patch('main.celery_app.send_task') as mock_celery:
+        with patch("main.celery_app.send_task") as mock_celery:
             mock_celery.return_value.id = "job-123"
 
             response = authenticated_client.post(
@@ -385,21 +369,39 @@ class TestProjectsEndpoints:
 # Usage Tracking Tests
 # ============================================
 
+
 class TestUsageEndpoints:
     """Tests for usage tracking API endpoints."""
 
     def test_get_usage_summary(self, authenticated_client, mock_user):
         """Test getting user usage summary."""
-        with patch('main.UsageTracker') as MockTracker:
+        with patch("main.UsageTracker") as MockTracker:
             mock_instance = MockTracker.return_value
             mock_instance.get_usage_summary.return_value = {
                 "user_id": mock_user.id,
                 "tier": "free",
                 "month": "2024-01",
-                "budget": {"limit_usd": 1.0, "used_usd": 0.0, "remaining_usd": 1.0, "usage_percent": 0.0},
-                "tokens": {"used": 0, "limit": 100000, "remaining": 100000, "usage_percent": 0, "prompt_tokens": 0, "completion_tokens": 0},
+                "budget": {
+                    "limit_usd": 1.0,
+                    "used_usd": 0.0,
+                    "remaining_usd": 1.0,
+                    "usage_percent": 0.0,
+                },
+                "tokens": {
+                    "used": 0,
+                    "limit": 100000,
+                    "remaining": 100000,
+                    "usage_percent": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                },
                 "activity": {"projects_created": 0, "papers_analyzed": 0, "llm_calls": 0},
-                "limits": {"monthly_budget_usd": 1.0, "monthly_tokens": 100000, "max_projects": 5, "max_papers_per_project": 30}
+                "limits": {
+                    "monthly_budget_usd": 1.0,
+                    "monthly_tokens": 100000,
+                    "max_projects": 5,
+                    "max_papers_per_project": 30,
+                },
             }
 
             response = authenticated_client.get("/api/users/me/usage")
@@ -408,14 +410,14 @@ class TestUsageEndpoints:
 
     def test_budget_check_allowed(self, authenticated_client, mock_user):
         """Test budget check when within limits."""
-        with patch('main.UsageTracker') as MockTracker:
+        with patch("main.UsageTracker") as MockTracker:
             mock_instance = MockTracker.return_value
             mock_instance.check_budget.return_value = {
                 "allowed": True,
                 "remaining_budget": 0.9,
                 "current_usage": 0.1,
                 "limit": 1.0,
-                "usage_percent": 10.0
+                "usage_percent": 10.0,
             }
 
             response = authenticated_client.get("/api/users/me/budget-check?estimated_cost=0.1")
@@ -429,12 +431,13 @@ class TestUsageEndpoints:
 # Search Tests
 # ============================================
 
+
 class TestSearchEndpoints:
     """Tests for semantic search API endpoints."""
 
     def test_semantic_search_success(self, authenticated_client, mock_project):
         """Test semantic search within a project."""
-        with patch('main.RAGService') as MockRAG:
+        with patch("main.RAGService") as MockRAG:
             mock_instance = MockRAG.return_value
             mock_instance.search.return_value = [
                 {
@@ -443,17 +446,13 @@ class TestSearchEndpoints:
                     "paper_id": "paper-1",
                     "paper_title": "Test Paper",
                     "chunk_type": "abstract",
-                    "final_score": 0.95
+                    "final_score": 0.95,
                 }
             ]
 
             response = authenticated_client.post(
                 f"/api/projects/{mock_project.id}/search",
-                json={
-                    "text": "machine learning in education",
-                    "top_k": 10,
-                    "use_hybrid": True
-                }
+                json={"text": "machine learning in education", "top_k": 10, "use_hybrid": True},
             )
 
             assert response.status_code == 200
@@ -473,10 +472,7 @@ class TestSearchEndpoints:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.post(
-            "/api/projects/nonexistent/search",
-            json={"text": "test query"}
-        )
+        response = client.post("/api/projects/nonexistent/search", json={"text": "test query"})
 
         app.dependency_overrides.clear()
         assert response.status_code == 404
@@ -485,6 +481,7 @@ class TestSearchEndpoints:
 # ============================================
 # Health Check Tests
 # ============================================
+
 
 class TestHealthEndpoints:
     """Tests for health check endpoints."""
@@ -508,6 +505,7 @@ class TestHealthEndpoints:
 # Error Handling Tests
 # ============================================
 
+
 class TestAPIErrorHandling:
     """Tests for API error handling."""
 
@@ -516,7 +514,7 @@ class TestAPIErrorHandling:
         response = client.post(
             "/api/projects",
             headers={**auth_headers, "Content-Type": "application/json"},
-            content="not valid json"
+            content="not valid json",
         )
 
         assert response.status_code == 422
@@ -530,8 +528,7 @@ class TestAPIErrorHandling:
     def test_invalid_token_format(self, client):
         """Test that invalid token format is rejected."""
         response = client.get(
-            "/api/projects",
-            headers={"Authorization": "Bearer invalid-token-format"}
+            "/api/projects", headers={"Authorization": "Bearer invalid-token-format"}
         )
 
         assert response.status_code == 401
@@ -541,9 +538,10 @@ class TestAPIErrorHandling:
 # Celery Task Import Tests
 # ============================================
 
+
 class TestCeleryTaskImports:
     """Tests to ensure Celery tasks have all required imports.
-    
+
     These tests verify that all imports inside Celery task functions
     are valid and won't cause NameError at runtime.
     """
@@ -555,11 +553,12 @@ class TestCeleryTaskImports:
 
         # Verify the task is properly decorated and callable
         assert callable(run_literature_review)
-        assert hasattr(run_literature_review, 'delay')  # Celery task attribute
-        assert hasattr(run_literature_review, 'apply_async')  # Celery task attribute
+        assert hasattr(run_literature_review, "delay")  # Celery task attribute
+        assert hasattr(run_literature_review, "apply_async")  # Celery task attribute
 
         # Verify the function can be inspected (catches syntax errors)
         import inspect
+
         sig = inspect.signature(run_literature_review)
-        assert 'project_id' in sig.parameters
-        assert 'max_papers' in sig.parameters
+        assert "project_id" in sig.parameters
+        assert "max_papers" in sig.parameters

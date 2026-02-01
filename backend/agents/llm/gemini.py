@@ -26,14 +26,14 @@ logger = logging.getLogger(__name__)
 class GeminiProvider(BaseLLMClient):
     """
     Google Gemini API client with smart routing and error handling.
-    
+
     Gemini Features:
     - Large context windows (up to 2M tokens)
     - Good for complex reasoning tasks
     - Competitive pricing
-    
+
     Note: Free tier has strict rate limits (15 RPM for flash, 2 RPM for pro)
-    
+
     Models:
     - gemini-2.0-flash-lite: Fastest, cheapest
     - gemini-2.0-flash: Good balance
@@ -57,9 +57,7 @@ class GeminiProvider(BaseLLMClient):
 
         # Circuit breaker
         self.circuit_breaker = get_circuit_breaker(
-            "gemini_api",
-            failure_threshold=5,
-            recovery_timeout=60.0
+            "gemini_api", failure_threshold=5, recovery_timeout=60.0
         )
 
         # Retry config
@@ -68,22 +66,18 @@ class GeminiProvider(BaseLLMClient):
             initial_delay=1.0,
             max_delay=60.0,
             exponential_base=2.0,
-            jitter=True
+            jitter=True,
         )
 
         logger.info(
-            f"GeminiProvider initialized (user={self.user_id}, "
-            f"budget=${self.user_budget:.4f})"
+            f"GeminiProvider initialized (user={self.user_id}, " f"budget=${self.user_budget:.4f})"
         )
 
     def get_provider_name(self) -> str:
         return self.PROVIDER_NAME
 
     def _select_model(
-        self,
-        task_type: str,
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None
+        self, task_type: str, complexity_hint: str | None = None, max_latency_ms: int | None = None
     ) -> tuple[str, ModelTier]:
         """Select the appropriate Gemini model."""
 
@@ -138,7 +132,7 @@ class GeminiProvider(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Send a chat request and return the response text."""
         response = self.chat_with_response(
@@ -146,7 +140,7 @@ class GeminiProvider(BaseLLMClient):
             task_type=task_type,
             complexity_hint=complexity_hint,
             max_latency_ms=max_latency_ms,
-            **kwargs
+            **kwargs,
         )
         return response.text
 
@@ -156,7 +150,7 @@ class GeminiProvider(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> LLMResponse:
         """Send a chat request and return full response with metadata."""
 
@@ -204,7 +198,7 @@ class GeminiProvider(BaseLLMClient):
                 metadata={
                     "tier": tier.value,
                     "task_type": task_type,
-                }
+                },
             )
 
         except Exception as e:
@@ -220,9 +214,9 @@ class GeminiProvider(BaseLLMClient):
                 requests.exceptions.HTTPError,
                 requests.exceptions.Timeout,
                 requests.exceptions.ConnectionError,
-                RetryableError
+                RetryableError,
             ),
-            non_retryable_exceptions=(NonRetryableError,)
+            non_retryable_exceptions=(NonRetryableError,),
         )
         def _call_api():
             return self.circuit_breaker.call(self._do_api_request, model, prompt, **kwargs)
@@ -241,7 +235,7 @@ class GeminiProvider(BaseLLMClient):
             "generationConfig": {
                 "temperature": kwargs.get("temperature", 0.7),
                 "maxOutputTokens": kwargs.get("max_tokens", 4096),
-            }
+            },
         }
 
         if "top_p" in kwargs:
@@ -249,11 +243,7 @@ class GeminiProvider(BaseLLMClient):
 
         try:
             resp = requests.post(
-                url,
-                headers=headers,
-                params=params,
-                json=data,
-                timeout=self.config.timeout
+                url, headers=headers, params=params, json=data, timeout=self.config.timeout
             )
             resp.raise_for_status()
             return resp.json()
@@ -263,55 +253,47 @@ class GeminiProvider(BaseLLMClient):
 
             if status_code == 429:
                 raise RetryableError(
-                    f"Rate limit exceeded: {e}",
-                    category=ErrorCategory.RATE_LIMIT,
-                    severity="low"
+                    f"Rate limit exceeded: {e}", category=ErrorCategory.RATE_LIMIT, severity="low"
                 )
             elif status_code >= 500:
                 raise RetryableError(
                     f"Server error ({status_code}): {e}",
                     category=ErrorCategory.SERVER_ERROR,
-                    severity="medium"
+                    severity="medium",
                 )
             elif status_code in (401, 403):
                 raise NonRetryableError(
                     f"Authentication failed ({status_code}): Check GEMINI_API_KEY",
                     category=ErrorCategory.CLIENT_ERROR,
-                    severity="high"
+                    severity="high",
                 )
             elif status_code == 400:
                 raise NonRetryableError(
                     f"Invalid request ({status_code}): {e}",
                     category=ErrorCategory.VALIDATION,
-                    severity="medium"
+                    severity="medium",
                 )
             else:
                 raise NonRetryableError(
                     f"Client error ({status_code}): {e}",
                     category=ErrorCategory.CLIENT_ERROR,
-                    severity="medium"
+                    severity="medium",
                 )
 
         except requests.exceptions.Timeout as e:
             raise RetryableError(
-                f"Request timeout: {e}",
-                category=ErrorCategory.TIMEOUT,
-                severity="low"
+                f"Request timeout: {e}", category=ErrorCategory.TIMEOUT, severity="low"
             )
 
         except requests.exceptions.ConnectionError as e:
             raise RetryableError(
-                f"Network error: {e}",
-                category=ErrorCategory.NETWORK,
-                severity="medium"
+                f"Network error: {e}", category=ErrorCategory.NETWORK, severity="medium"
             )
 
         except Exception as e:
             logger.error(f"Unexpected error in Gemini request: {e}", exc_info=True)
             raise RetryableError(
-                f"Unexpected error: {e}",
-                category=ErrorCategory.UNKNOWN,
-                severity="medium"
+                f"Unexpected error: {e}", category=ErrorCategory.UNKNOWN, severity="medium"
             )
 
     def get_usage_stats(self) -> dict[str, Any]:
@@ -322,7 +304,7 @@ class GeminiProvider(BaseLLMClient):
             "budget": self.user_budget,
             "spent": self.spent,
             "remaining": self.user_budget - self.spent,
-            "usage_percent": (self.spent / self.user_budget * 100) if self.user_budget > 0 else 0
+            "usage_percent": (self.spent / self.user_budget * 100) if self.user_budget > 0 else 0,
         }
 
     def reset_budget(self, new_budget: float | None = None) -> None:

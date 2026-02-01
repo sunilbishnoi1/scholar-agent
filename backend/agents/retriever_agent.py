@@ -10,6 +10,7 @@ from paper_retriever import PaperRetriever
 # RAG integration (optional - gracefully handles if not available)
 try:
     from rag import RAGService, get_rag_service
+
     RAG_AVAILABLE = True
 except ImportError:
     RAG_AVAILABLE = False
@@ -22,7 +23,7 @@ class PaperRetrieverAgent(ToolEnabledAgent):
     - Deduplicating results
     - Managing API rate limits
     - Ingesting papers into the RAG vector store
-    
+
     This agent wraps the existing PaperRetriever class and integrates it
     into the LangGraph pipeline.
     """
@@ -48,41 +49,33 @@ class PaperRetrieverAgent(ToolEnabledAgent):
 
     def _register_tools(self):
         """Register the tools this agent can use."""
-        self.register_tool(
-            "search_arxiv",
-            self._search_arxiv,
-            "Search arXiv for academic papers"
-        )
+        self.register_tool("search_arxiv", self._search_arxiv, "Search arXiv for academic papers")
         self.register_tool(
             "search_semantic_scholar",
             self._search_semantic_scholar,
-            "Search Semantic Scholar for academic papers"
+            "Search Semantic Scholar for academic papers",
         )
         self.register_tool(
-            "search_all_sources",
-            self._search_all_sources,
-            "Search all academic sources"
+            "search_all_sources", self._search_all_sources, "Search all academic sources"
         )
         self.register_tool(
-            "ingest_to_rag",
-            self._ingest_to_rag,
-            "Ingest papers into the RAG vector store"
+            "ingest_to_rag", self._ingest_to_rag, "Ingest papers into the RAG vector store"
         )
 
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the retriever agent.
-        
+
         Workflow:
         1. Get search strategy from state
         2. Search papers from multiple sources
         3. Deduplicate results
         4. Ingest into RAG vector store (if enabled)
         5. Store in state
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             Updated state with retrieved papers
         """
@@ -102,9 +95,7 @@ class PaperRetrieverAgent(ToolEnabledAgent):
 
             # Search for papers
             papers = await self.invoke_tool(
-                "search_all_sources",
-                keywords=keywords,
-                max_papers=max_papers
+                "search_all_sources", keywords=keywords, max_papers=max_papers
             )
 
             # Convert to PaperData format and deduplicate
@@ -114,33 +105,32 @@ class PaperRetrieverAgent(ToolEnabledAgent):
             rag_stats = None
             if self.enable_rag and unique_papers:
                 rag_stats = await self.invoke_tool(
-                    "ingest_to_rag",
-                    papers=unique_papers,
-                    project_id=project_id
+                    "ingest_to_rag", papers=unique_papers, project_id=project_id
                 )
 
             # Update state
             state["papers"] = unique_papers
             state["total_papers_found"] = len(unique_papers)
 
-            message = f"Retrieved {len(unique_papers)} unique papers from {len(papers)} total results"
+            message = (
+                f"Retrieved {len(unique_papers)} unique papers from {len(papers)} total results"
+            )
             if rag_stats:
-                message += f" (indexed {rag_stats.get('chunks_ingested', 0)} chunks for semantic search)"
+                message += (
+                    f" (indexed {rag_stats.get('chunks_ingested', 0)} chunks for semantic search)"
+                )
 
             state["messages"] = [self._create_message("search_papers", message)]
 
             # Log result
             result = AgentResult(
                 success=True,
-                data={
-                    "paper_count": len(unique_papers),
-                    "rag_stats": rag_stats
-                },
+                data={"paper_count": len(unique_papers), "rag_stats": rag_stats},
                 metadata={
                     "sources": ["arXiv", "Semantic Scholar"],
                     "keywords_used": len(keywords),
-                    "rag_enabled": self.enable_rag
-                }
+                    "rag_enabled": self.enable_rag,
+                },
             )
             self._log_complete(state, result)
 
@@ -160,7 +150,7 @@ class PaperRetrieverAgent(ToolEnabledAgent):
     def _search_all_sources(self, keywords: list[str], max_papers: int) -> list[dict]:
         """
         Search all academic sources with the given keywords.
-        
+
         This is a synchronous method that handles rate limiting internally.
         """
         return self.paper_retriever.search_papers(keywords, max_papers)
@@ -168,11 +158,11 @@ class PaperRetrieverAgent(ToolEnabledAgent):
     def _ingest_to_rag(self, papers: list[dict], project_id: str) -> dict:
         """
         Ingest papers into the RAG vector store.
-        
+
         Args:
             papers: List of paper dictionaries
             project_id: Project ID for isolation
-            
+
         Returns:
             Dictionary with ingestion statistics
         """
@@ -202,10 +192,10 @@ class PaperRetrieverAgent(ToolEnabledAgent):
     def _deduplicate_papers(self, papers: list[dict]) -> list[PaperData]:
         """
         Remove duplicate papers based on title similarity.
-        
+
         Args:
             papers: List of paper dictionaries
-            
+
         Returns:
             List of unique PaperData objects
         """
@@ -228,7 +218,7 @@ class PaperRetrieverAgent(ToolEnabledAgent):
                     "url": paper.get("url", ""),
                     "source": paper.get("source", "unknown"),
                     "relevance_score": None,
-                    "analysis": None
+                    "analysis": None,
                 }
                 unique_papers.append(paper_data)
 

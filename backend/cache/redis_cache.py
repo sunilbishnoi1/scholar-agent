@@ -16,12 +16,13 @@ import redis
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
 class CacheStats:
     """Statistics for cache performance monitoring."""
+
     hits: int = 0
     misses: int = 0
     errors: int = 0
@@ -35,12 +36,13 @@ class CacheStats:
         return {
             **asdict(self),
             "hit_rate": self.hit_rate,
-            "total_requests": self.hits + self.misses
+            "total_requests": self.hits + self.misses,
         }
 
 
 class CacheTier:
     """Cache tier configuration with TTL defaults."""
+
     # LLM Response Cache - short TTL for identical prompts
     LLM_RESPONSE = "llm"
     LLM_RESPONSE_TTL = 1800  # 30 minutes
@@ -65,14 +67,14 @@ class CacheTier:
 class IntelligentCache:
     """
     Multi-tier caching for AI operations.
-    
+
     Tiers:
     1. LLM Response Cache - Cache identical prompts (short TTL)
-    2. Paper Metadata Cache - Cache API responses (medium TTL)  
+    2. Paper Metadata Cache - Cache API responses (medium TTL)
     3. Embedding Cache - Cache computed embeddings (long TTL)
     4. Search Result Cache - Cache search queries (short TTL)
     5. Session Cache - Cache user session data like router state
-    
+
     Features:
     - Automatic serialization/deserialization
     - Cache key hashing for consistent lookups
@@ -83,7 +85,7 @@ class IntelligentCache:
     def __init__(self, redis_url: str | None = None):
         """
         Initialize the cache with Redis connection.
-        
+
         Args:
             redis_url: Redis connection URL (defaults to env var)
         """
@@ -110,7 +112,7 @@ class IntelligentCache:
                 decode_responses=False,  # Handle bytes for embeddings
                 socket_connect_timeout=5,
                 socket_timeout=5,
-                retry_on_timeout=True
+                retry_on_timeout=True,
             )
             # Test connection
             self._redis.ping()
@@ -141,12 +143,12 @@ class IntelligentCache:
     def _make_key(self, tier: str, content: str, namespace: str | None = None) -> str:
         """
         Create a cache key from content hash.
-        
+
         Args:
             tier: Cache tier (llm, embed, search, etc.)
             content: Content to hash
             namespace: Optional namespace (e.g., project_id, user_id)
-            
+
         Returns:
             Cache key string
         """
@@ -158,28 +160,30 @@ class IntelligentCache:
     def _serialize(self, value: Any) -> bytes:
         """Serialize value for storage."""
         try:
-            return json.dumps(value).encode('utf-8')
+            return json.dumps(value).encode("utf-8")
         except (TypeError, ValueError):
             # For non-JSON-serializable objects (like numpy arrays)
             import pickle
+
             return pickle.dumps(value)
 
     def _deserialize(self, data: bytes) -> Any:
         """Deserialize value from storage."""
         try:
-            return json.loads(data.decode('utf-8'))
+            return json.loads(data.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             import pickle
+
             return pickle.loads(data)
 
     def get(self, key: str, tier: str = CacheTier.LLM_RESPONSE) -> Any | None:
         """
         Get value from cache.
-        
+
         Args:
             key: Cache key
             tier: Cache tier for statistics
-            
+
         Returns:
             Cached value or None
         """
@@ -200,22 +204,16 @@ class IntelligentCache:
             self._stats[tier].misses += 1
             return None
 
-    def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: int,
-        tier: str = CacheTier.LLM_RESPONSE
-    ) -> bool:
+    def set(self, key: str, value: Any, ttl: int, tier: str = CacheTier.LLM_RESPONSE) -> bool:
         """
         Set value in cache.
-        
+
         Args:
             key: Cache key
             value: Value to cache
             ttl: Time-to-live in seconds
             tier: Cache tier for statistics
-            
+
         Returns:
             True if successful
         """
@@ -248,18 +246,18 @@ class IntelligentCache:
         content: str,
         compute_fn: Callable[[], T],
         ttl: int | None = None,
-        namespace: str | None = None
+        namespace: str | None = None,
     ) -> T:
         """
         Get from cache or compute and cache result.
-        
+
         Args:
             tier: Cache tier
             content: Content to generate cache key from
             compute_fn: Function to compute value if not cached
             ttl: Time-to-live (defaults to tier default)
             namespace: Optional namespace for key
-            
+
         Returns:
             Cached or computed value
         """
@@ -297,7 +295,7 @@ class IntelligentCache:
         content: str,
         compute_fn: Callable[[], Any],
         ttl: int | None = None,
-        namespace: str | None = None
+        namespace: str | None = None,
     ) -> Any:
         """Async version of get_or_compute."""
         key = self._make_key(tier, content, namespace)
@@ -336,12 +334,13 @@ class IntelligentCache:
     def cache_llm_response(self, ttl: int = CacheTier.LLM_RESPONSE_TTL):
         """
         Decorator to cache LLM responses.
-        
+
         Usage:
             @cache.cache_llm_response()
             def generate_text(prompt: str) -> str:
                 return llm.chat(prompt)
         """
+
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(prompt: str, *args, **kwargs) -> Any:
@@ -371,10 +370,12 @@ class IntelligentCache:
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
+
         return decorator
 
     def cache_embedding(self, ttl: int = CacheTier.EMBEDDING_TTL):
         """Decorator to cache embeddings (long TTL)."""
+
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(text: str, *args, **kwargs) -> Any:
@@ -403,10 +404,12 @@ class IntelligentCache:
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
+
         return decorator
 
     def cache_search(self, ttl: int = CacheTier.SEARCH_TTL, namespace: str | None = None):
         """Decorator to cache search results."""
+
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             def wrapper(query: str, *args, **kwargs) -> Any:
@@ -438,6 +441,7 @@ class IntelligentCache:
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return wrapper
+
         return decorator
 
     # =========================================================================
@@ -514,10 +518,7 @@ class IntelligentCache:
 
     def get_stats(self) -> dict:
         """Get cache statistics for all tiers."""
-        return {
-            tier: stats.to_dict()
-            for tier, stats in self._stats.items()
-        }
+        return {tier: stats.to_dict() for tier, stats in self._stats.items()}
 
     def get_tier_stats(self, tier: str) -> dict:
         """Get statistics for a specific tier."""
@@ -545,7 +546,7 @@ class IntelligentCache:
         return {
             "connected": self.is_connected,
             "redis_url": self.redis_url.split("@")[-1] if "@" in self.redis_url else self.redis_url,
-            "stats": self.get_stats()
+            "stats": self.get_stats(),
         }
 
 

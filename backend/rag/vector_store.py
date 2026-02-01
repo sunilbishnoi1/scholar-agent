@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SearchResult:
     """Result from vector search."""
+
     chunk_id: str
     content: str
     paper_id: str
@@ -57,7 +58,7 @@ class SearchResult:
 class AcademicVectorStore:
     """
     Vector store for academic papers using Qdrant.
-    
+
     Features:
     - Automatic collection management
     - Chunk deduplication via content hashing
@@ -77,16 +78,14 @@ class AcademicVectorStore:
     ):
         """
         Initialize the vector store.
-        
+
         Args:
             qdrant_url: Qdrant server URL (defaults to QDRANT_URL env var)
             qdrant_api_key: Qdrant API key (defaults to QDRANT_API_KEY env var)
             embedding_service: Embedding service instance
             collection_name: Override default collection name
         """
-        self.qdrant_url = qdrant_url or os.environ.get(
-            "QDRANT_URL", "http://localhost:6333"
-        )
+        self.qdrant_url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
         self.qdrant_api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
 
         # Initialize Qdrant client
@@ -172,12 +171,12 @@ class AcademicVectorStore:
     ) -> int:
         """
         Ingest paper chunks into the vector store.
-        
+
         Args:
             chunks: List of PaperChunk objects
             project_id: Project ID for isolation
             batch_size: Batch size for embedding and upsert
-            
+
         Returns:
             Number of chunks ingested
         """
@@ -190,7 +189,7 @@ class AcademicVectorStore:
 
         # Process in batches
         for i in range(0, len(chunks), batch_size):
-            batch = chunks[i:i + batch_size]
+            batch = chunks[i : i + batch_size]
 
             # Generate embeddings
             texts = [chunk.content for chunk in batch]
@@ -214,11 +213,13 @@ class AcademicVectorStore:
                     "ingested_at": datetime.utcnow().isoformat(),
                 }
 
-                points.append(PointStruct(
-                    id=chunk_id,
-                    vector=embedding,
-                    payload=payload,
-                ))
+                points.append(
+                    PointStruct(
+                        id=chunk_id,
+                        vector=embedding,
+                        payload=payload,
+                    )
+                )
 
             # Upsert to Qdrant (handles duplicates automatically)
             self.client.upsert(
@@ -241,12 +242,12 @@ class AcademicVectorStore:
     ) -> int:
         """
         Chunk and ingest papers into the vector store.
-        
+
         Args:
             papers: List of paper dictionaries
             project_id: Project ID for isolation
             chunker: Optional custom chunker
-            
+
         Returns:
             Number of chunks ingested
         """
@@ -273,14 +274,14 @@ class AcademicVectorStore:
     ) -> list[SearchResult]:
         """
         Search for relevant chunks using vector similarity.
-        
+
         Args:
             query: Search query text
             project_id: Project ID to search within
             top_k: Number of results to return
             chunk_types: Filter by chunk types (e.g., ["abstract", "methodology"])
             score_threshold: Minimum similarity score
-            
+
         Returns:
             List of SearchResult objects
         """
@@ -322,31 +323,29 @@ class AcademicVectorStore:
         search_results = []
         for hit in results:
             payload = hit.payload
-            search_results.append(SearchResult(
-                chunk_id=str(hit.id),
-                content=payload.get("content", ""),
-                paper_id=payload.get("paper_id", ""),
-                paper_title=payload.get("paper_title", ""),
-                chunk_type=payload.get("chunk_type", "general"),
-                score=hit.score,
-                weight=payload.get("weight", 1.0),
-                metadata=payload.get("metadata", {}),
-            ))
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(hit.id),
+                    content=payload.get("content", ""),
+                    paper_id=payload.get("paper_id", ""),
+                    paper_title=payload.get("paper_title", ""),
+                    chunk_type=payload.get("chunk_type", "general"),
+                    score=hit.score,
+                    weight=payload.get("weight", 1.0),
+                    metadata=payload.get("metadata", {}),
+                )
+            )
 
         logger.debug(f"Search returned {len(search_results)} results for project {project_id}")
 
         return search_results
 
     def search_with_weighted_score(
-        self,
-        query: str,
-        project_id: str,
-        top_k: int = 10,
-        **kwargs
+        self, query: str, project_id: str, top_k: int = 10, **kwargs
     ) -> list[SearchResult]:
         """
         Search with weight-adjusted scores.
-        
+
         Combines vector similarity with chunk importance weights.
         """
         results = self.search(query, project_id, top_k=top_k * 2, **kwargs)
@@ -363,10 +362,10 @@ class AcademicVectorStore:
     def delete_project_data(self, project_id: str) -> int:
         """
         Delete all chunks for a project.
-        
+
         Args:
             project_id: Project ID to delete
-            
+
         Returns:
             Number of points deleted
         """

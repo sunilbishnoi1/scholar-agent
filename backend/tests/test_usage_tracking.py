@@ -35,7 +35,7 @@ class TestUsageTracker:
             name="Test User",
             hashed_password="hashed",
             tier="free",
-            monthly_budget_usd=1.0
+            monthly_budget_usd=1.0,
         )
         db_session.add(user)
         db_session.commit()
@@ -45,6 +45,7 @@ class TestUsageTracker:
     def usage_tracker(self, db_session):
         """Create a UsageTracker instance."""
         from services.usage_tracker import UsageTracker
+
         return UsageTracker(db_session)
 
     def test_get_or_create_usage_creates_new_record(self, usage_tracker, test_user, db_session):
@@ -127,7 +128,7 @@ class TestUsageTracker:
             task_type="paper_analysis",
             prompt_preview="Analyze this paper...",
             response_preview="The paper discusses...",
-            success=True
+            success=True,
         )
 
         # Check that LLMInteraction was created
@@ -170,7 +171,7 @@ class TestUsageTracker:
             completion_tokens=100,
             cost_usd=0.03,
             latency_ms=800,
-            success=True
+            success=True,
         )
         usage_tracker.record_project_created(test_user.id)
         usage_tracker.record_paper_analyzed(test_user.id, count=10)

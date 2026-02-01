@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ToolResult:
     """Standardized result from a tool execution."""
+
     success: bool
     data: any
     error: str | None = None
@@ -21,17 +22,17 @@ class ToolResult:
 def extract_json_from_response(response: str, default: dict | None = None) -> dict[str, Any]:
     """
     Robustly extract JSON from LLM response, handling common issues.
-    
+
     Handles:
     - Markdown code blocks (```json ... ```)
     - Multiple JSON objects (takes first complete one)
     - Extra text before/after JSON
     - Truncated responses
-    
+
     Args:
         response: Raw LLM response string
         default: Default value if extraction fails
-        
+
     Returns:
         Parsed JSON dict or default
     """
@@ -39,9 +40,9 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
         return default or {}
 
     # Step 1: Clean markdown code blocks
-    clean = re.sub(r'```json\s*', '', response)
-    clean = re.sub(r'```\s*$', '', clean)
-    clean = re.sub(r'```', '', clean)
+    clean = re.sub(r"```json\s*", "", response)
+    clean = re.sub(r"```\s*$", "", clean)
+    clean = re.sub(r"```", "", clean)
     clean = clean.strip()
 
     # Step 2: Try direct parsing first
@@ -51,7 +52,7 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
         pass
 
     # Step 3: Find JSON object boundaries using brace matching
-    start_idx = clean.find('{')
+    start_idx = clean.find("{")
     if start_idx == -1:
         logger.warning(f"No JSON object found in response: {clean[:100]}...")
         return default or {}
@@ -66,7 +67,7 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
         if escape_next:
             escape_next = False
             continue
-        if char == '\\':
+        if char == "\\":
             escape_next = True
             continue
         if char == '"' and not escape_next:
@@ -74,9 +75,9 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
             continue
         if in_string:
             continue
-        if char == '{':
+        if char == "{":
             depth += 1
-        elif char == '}':
+        elif char == "}":
             depth -= 1
             if depth == 0:
                 end_idx = i + 1
@@ -84,11 +85,11 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
 
     if depth != 0:
         # Truncated JSON - try to fix common issues
-        json_str = clean[start_idx:end_idx if end_idx > start_idx else None]
+        json_str = clean[start_idx : end_idx if end_idx > start_idx else None]
 
         # Try adding missing closing braces
         while depth > 0:
-            json_str += '}'
+            json_str += "}"
             depth -= 1
 
         try:
@@ -113,17 +114,18 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
 # PLANNER TOOLS
 # ============================================
 
+
 def extract_keywords_from_question(llm_client, research_question: str, title: str) -> ToolResult:
     """
     Tool: Extract search keywords from a research question.
-    
+
     Uses LLM to generate diverse and specific keywords for academic database searches.
-    
+
     Args:
         llm_client: The LLM client to use
         research_question: The research question to analyze
         title: The project title for context
-        
+
     Returns:
         ToolResult with list of keywords
     """
@@ -148,7 +150,7 @@ def extract_keywords_from_question(llm_client, research_question: str, title: st
 
     try:
         response = llm_client.chat(prompt)
-        clean_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+        clean_response = re.sub(r"```json\s*|\s*```", "", response).strip()
         data = json.loads(clean_response)
         keywords = data.get("keywords", [])
 
@@ -166,12 +168,12 @@ def extract_keywords_from_question(llm_client, research_question: str, title: st
 def identify_subtopics(llm_client, research_question: str, title: str) -> ToolResult:
     """
     Tool: Identify subtopics for structuring the literature review.
-    
+
     Args:
         llm_client: The LLM client to use
         research_question: The research question to analyze
         title: The project title for context
-        
+
     Returns:
         ToolResult with list of subtopics
     """
@@ -192,7 +194,7 @@ def identify_subtopics(llm_client, research_question: str, title: str) -> ToolRe
 
     try:
         response = llm_client.chat(prompt)
-        clean_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+        clean_response = re.sub(r"```json\s*|\s*```", "", response).strip()
         data = json.loads(clean_response)
         subtopics = data.get("subtopics", [])
 
@@ -207,16 +209,18 @@ def identify_subtopics(llm_client, research_question: str, title: str) -> ToolRe
         return ToolResult(success=False, data=[], error=str(e))
 
 
-def refine_search_query(llm_client, original_query: str, found_papers: int, target_papers: int) -> ToolResult:
+def refine_search_query(
+    llm_client, original_query: str, found_papers: int, target_papers: int
+) -> ToolResult:
     """
     Tool: Refine search query if not enough papers were found.
-    
+
     Args:
         llm_client: The LLM client to use
         original_query: The original search keywords
         found_papers: Number of papers found with original query
         target_papers: Target number of papers needed
-        
+
     Returns:
         ToolResult with refined keywords
     """
@@ -239,7 +243,7 @@ def refine_search_query(llm_client, original_query: str, found_papers: int, targ
 
     try:
         response = llm_client.chat(prompt)
-        clean_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+        clean_response = re.sub(r"```json\s*|\s*```", "", response).strip()
         data = json.loads(clean_response)
         refined = data.get("refined_keywords", [])
 
@@ -258,16 +262,19 @@ def refine_search_query(llm_client, original_query: str, found_papers: int, targ
 # ANALYZER TOOLS
 # ============================================
 
-def score_paper_relevance(llm_client, title: str, abstract: str, research_question: str) -> ToolResult:
+
+def score_paper_relevance(
+    llm_client, title: str, abstract: str, research_question: str
+) -> ToolResult:
     """
     Tool: Score a paper's relevance to the research question.
-    
+
     Args:
         llm_client: The LLM client to use
         title: Paper title
         abstract: Paper abstract
         research_question: The research question
-        
+
     Returns:
         ToolResult with relevance score (0-100) and justification
     """
@@ -291,17 +298,16 @@ def score_paper_relevance(llm_client, title: str, abstract: str, research_questi
 
     try:
         response = llm_client.chat(prompt, task_type="relevance_scoring")
-        data = extract_json_from_response(response, {"score": 50, "justification": "Could not parse response"})
+        data = extract_json_from_response(
+            response, {"score": 50, "justification": "Could not parse response"}
+        )
 
         score = int(data.get("score", 50))
         # Clamp score to valid range
         score = max(0, min(100, score))
         justification = str(data.get("justification", ""))[:200]
 
-        return ToolResult(
-            success=True,
-            data={"score": score, "justification": justification}
-        )
+        return ToolResult(success=True, data={"score": score, "justification": justification})
 
     except Exception as e:
         logger.error(f"Failed to score relevance: {e}")
@@ -309,20 +315,22 @@ def score_paper_relevance(llm_client, title: str, abstract: str, research_questi
         return ToolResult(
             success=True,  # Don't fail the whole pipeline
             data={"score": 50, "justification": f"Score estimation failed: {str(e)[:50]}"},
-            error=str(e)
+            error=str(e),
         )
 
 
-def extract_paper_insights(llm_client, title: str, abstract: str, research_question: str) -> ToolResult:
+def extract_paper_insights(
+    llm_client, title: str, abstract: str, research_question: str
+) -> ToolResult:
     """
     Tool: Extract detailed insights from a paper.
-    
+
     Args:
         llm_client: The LLM client to use
         title: Paper title
         abstract: Paper abstract
         research_question: The research question for context
-        
+
     Returns:
         ToolResult with structured paper analysis
     """
@@ -353,16 +361,20 @@ def extract_paper_insights(llm_client, title: str, abstract: str, research_quest
             "methodology": "Not determined",
             "limitations": [],
             "contribution": "Paper contribution unclear",
-            "key_quotes": []
+            "key_quotes": [],
         }
 
         data = extract_json_from_response(response, default_data)
 
         # Ensure all required keys exist with proper types
         if not isinstance(data.get("key_findings"), list):
-            data["key_findings"] = [str(data.get("key_findings", ""))] if data.get("key_findings") else []
+            data["key_findings"] = (
+                [str(data.get("key_findings", ""))] if data.get("key_findings") else []
+            )
         if not isinstance(data.get("limitations"), list):
-            data["limitations"] = [str(data.get("limitations", ""))] if data.get("limitations") else []
+            data["limitations"] = (
+                [str(data.get("limitations", ""))] if data.get("limitations") else []
+            )
         if not isinstance(data.get("key_quotes"), list):
             data["key_quotes"] = [str(data.get("key_quotes", ""))] if data.get("key_quotes") else []
 
@@ -380,9 +392,9 @@ def extract_paper_insights(llm_client, title: str, abstract: str, research_quest
                 "methodology": "Could not determine",
                 "limitations": [],
                 "contribution": "Analysis incomplete",
-                "key_quotes": []
+                "key_quotes": [],
             },
-            error=str(e)
+            error=str(e),
         )
 
 
@@ -390,34 +402,33 @@ def extract_paper_insights(llm_client, title: str, abstract: str, research_quest
 # SYNTHESIZER TOOLS
 # ============================================
 
+
 def synthesize_section(
-    llm_client,
-    subtopic: str,
-    paper_analyses: list[dict],
-    academic_level: str,
-    word_count: int
+    llm_client, subtopic: str, paper_analyses: list[dict], academic_level: str, word_count: int
 ) -> ToolResult:
     """
     Tool: Synthesize a literature review section from analyzed papers.
-    
+
     Args:
         llm_client: The LLM client to use
         subtopic: The section topic
         paper_analyses: List of paper analysis dictionaries
         academic_level: Writing level (e.g., "graduate")
         word_count: Target word count
-        
+
     Returns:
         ToolResult with synthesized text
     """
     # Format paper analyses for the prompt
-    analyses_text = "\n\n---\n\n".join([
-        f"Paper: {pa.get('title', 'Unknown')}\n"
-        f"Findings: {pa.get('key_findings', [])}\n"
-        f"Methodology: {pa.get('methodology', '')}\n"
-        f"Contribution: {pa.get('contribution', '')}"
-        for pa in paper_analyses
-    ])
+    analyses_text = "\n\n---\n\n".join(
+        [
+            f"Paper: {pa.get('title', 'Unknown')}\n"
+            f"Findings: {pa.get('key_findings', [])}\n"
+            f"Methodology: {pa.get('methodology', '')}\n"
+            f"Contribution: {pa.get('contribution', '')}"
+            for pa in paper_analyses
+        ]
+    )
 
     prompt = f"""You are a Synthesis Executor agent specializing in academic writing.
     
@@ -452,15 +463,17 @@ def synthesize_section(
         return ToolResult(success=False, data="", error=str(e))
 
 
-def identify_research_gaps(llm_client, paper_analyses: list[dict], research_question: str) -> ToolResult:
+def identify_research_gaps(
+    llm_client, paper_analyses: list[dict], research_question: str
+) -> ToolResult:
     """
     Tool: Identify research gaps from the analyzed papers.
-    
+
     Args:
         llm_client: The LLM client to use
         paper_analyses: List of paper analysis dictionaries
         research_question: The research question for context
-        
+
     Returns:
         ToolResult with identified research gaps
     """
@@ -492,7 +505,7 @@ def identify_research_gaps(llm_client, paper_analyses: list[dict], research_ques
 
     try:
         response = llm_client.chat(prompt)
-        clean_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+        clean_response = re.sub(r"```json\s*|\s*```", "", response).strip()
         data = json.loads(clean_response)
 
         gaps = data.get("research_gaps", [])
@@ -507,16 +520,19 @@ def identify_research_gaps(llm_client, paper_analyses: list[dict], research_ques
 # QUALITY CHECKER TOOLS
 # ============================================
 
-def evaluate_synthesis_quality(llm_client, synthesis: str, research_question: str, paper_count: int) -> ToolResult:
+
+def evaluate_synthesis_quality(
+    llm_client, synthesis: str, research_question: str, paper_count: int
+) -> ToolResult:
     """
     Tool: Evaluate the quality of the synthesized literature review.
-    
+
     Args:
         llm_client: The LLM client to use
         synthesis: The synthesized text to evaluate
         research_question: The research question for context
         paper_count: Number of papers that were analyzed
-        
+
     Returns:
         ToolResult with quality score and feedback
     """
@@ -546,7 +562,7 @@ def evaluate_synthesis_quality(llm_client, synthesis: str, research_question: st
 
     try:
         response = llm_client.chat(prompt)
-        clean_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+        clean_response = re.sub(r"```json\s*|\s*```", "", response).strip()
         data = json.loads(clean_response)
 
         return ToolResult(
@@ -555,8 +571,8 @@ def evaluate_synthesis_quality(llm_client, synthesis: str, research_question: st
                 "overall_score": data.get("overall_score", 0),
                 "criteria_scores": data.get("criteria_scores", {}),
                 "feedback": data.get("feedback", ""),
-                "should_refine": data.get("should_refine", False)
-            }
+                "should_refine": data.get("should_refine", False),
+            },
         )
 
     except (json.JSONDecodeError, Exception) as e:
@@ -564,5 +580,5 @@ def evaluate_synthesis_quality(llm_client, synthesis: str, research_question: st
         return ToolResult(
             success=False,
             data={"overall_score": 0, "feedback": str(e), "should_refine": True},
-            error=str(e)
+            error=str(e),
         )

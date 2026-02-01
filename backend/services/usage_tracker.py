@@ -42,7 +42,7 @@ TIER_LIMITS = {
 class UsageTracker:
     """
     Tracks and enforces usage quotas for users.
-    
+
     Features:
     - Monthly usage tracking
     - Budget enforcement
@@ -62,10 +62,11 @@ class UsageTracker:
         """Get or create the current month's usage record for a user."""
         current_month = self.get_current_month()
 
-        usage = self.db.query(UserUsage).filter(
-            UserUsage.user_id == user_id,
-            UserUsage.month == current_month
-        ).first()
+        usage = (
+            self.db.query(UserUsage)
+            .filter(UserUsage.user_id == user_id, UserUsage.month == current_month)
+            .first()
+        )
 
         if not usage:
             usage = UserUsage(
@@ -77,7 +78,7 @@ class UsageTracker:
                 total_cost_usd=0.0,
                 projects_created=0,
                 papers_analyzed=0,
-                llm_calls=0
+                llm_calls=0,
             )
             self.db.add(usage)
             self.db.commit()
@@ -99,7 +100,7 @@ class UsageTracker:
     def check_budget(self, user: User, estimated_cost: float = 0.0) -> dict[str, Any]:
         """
         Check if user has remaining budget.
-        
+
         Returns:
             Dict with:
             - allowed: bool - whether the operation is allowed
@@ -126,11 +127,15 @@ class UsageTracker:
         # Check if estimated cost would exceed budget
         if estimated_cost > 0 and current_cost + estimated_cost > budget_limit:
             result["allowed"] = False
-            result["error"] = f"Estimated cost ${estimated_cost:.4f} would exceed remaining budget ${remaining:.4f}"
+            result["error"] = (
+                f"Estimated cost ${estimated_cost:.4f} would exceed remaining budget ${remaining:.4f}"
+            )
 
         # Add warning if close to limit
         if remaining < budget_limit * 0.1:  # Less than 10% remaining
-            result["warning"] = f"You have used {result['usage_percent']:.1f}% of your monthly budget"
+            result["warning"] = (
+                f"You have used {result['usage_percent']:.1f}% of your monthly budget"
+            )
 
         return result
 
@@ -153,7 +158,9 @@ class UsageTracker:
 
         if estimated_tokens > 0 and current_tokens + estimated_tokens > token_limit:
             result["allowed"] = False
-            result["error"] = f"Estimated tokens {estimated_tokens} would exceed remaining allowance {remaining}"
+            result["error"] = (
+                f"Estimated tokens {estimated_tokens} would exceed remaining allowance {remaining}"
+            )
 
         return result
 
@@ -172,11 +179,11 @@ class UsageTracker:
         response_preview: str = None,
         success: bool = True,
         error_message: str = None,
-        metadata: dict = None
+        metadata: dict = None,
     ):
         """
         Record an LLM interaction and update usage counters.
-        
+
         This method:
         1. Creates an LLMInteraction record for detailed logging
         2. Updates the UserUsage aggregates
@@ -197,7 +204,7 @@ class UsageTracker:
             cost_usd=cost_usd,
             success=success,
             error_message=error_message,
-            metadata=metadata
+            metadata=metadata,
         )
         self.db.add(interaction)
 
@@ -231,7 +238,7 @@ class UsageTracker:
     def get_usage_summary(self, user: User) -> dict[str, Any]:
         """
         Get a comprehensive usage summary for a user.
-        
+
         Returns:
             Dict with current usage, limits, and analytics
         """
@@ -252,7 +259,6 @@ class UsageTracker:
             "user_id": user.id,
             "tier": user.tier or "free",
             "month": usage.month.isoformat(),
-
             # Budget
             "budget": {
                 "used_usd": current_cost,
@@ -260,7 +266,6 @@ class UsageTracker:
                 "remaining_usd": budget_remaining,
                 "usage_percent": (current_cost / budget_limit * 100) if budget_limit > 0 else 0,
             },
-
             # Tokens
             "tokens": {
                 "used": current_tokens,
@@ -270,32 +275,26 @@ class UsageTracker:
                 "prompt_tokens": usage.prompt_tokens or 0,
                 "completion_tokens": usage.completion_tokens or 0,
             },
-
             # Activity
             "activity": {
                 "projects_created": usage.projects_created or 0,
                 "papers_analyzed": usage.papers_analyzed or 0,
                 "llm_calls": usage.llm_calls or 0,
             },
-
             # Limits
             "limits": {
                 "max_projects": limits["max_projects"],
                 "max_papers_per_project": limits["max_papers_per_project"],
             },
-
             "updated_at": usage.updated_at.isoformat() if usage.updated_at else None,
         }
 
     def get_usage_analytics(
-        self,
-        user_id: str,
-        start_date: date = None,
-        end_date: date = None
+        self, user_id: str, start_date: date = None, end_date: date = None
     ) -> dict[str, Any]:
         """
         Get detailed analytics for a user's usage.
-        
+
         Args:
             user_id: The user's ID
             start_date: Start of analytics period (defaults to 30 days ago)
@@ -307,11 +306,15 @@ class UsageTracker:
             start_date = end_date.replace(day=1)  # Start of current month
 
         # Get LLM interactions for the period
-        interactions = self.db.query(LLMInteraction).filter(
-            LLMInteraction.user_id == user_id,
-            func.date(LLMInteraction.created_at) >= start_date,
-            func.date(LLMInteraction.created_at) <= end_date
-        ).all()
+        interactions = (
+            self.db.query(LLMInteraction)
+            .filter(
+                LLMInteraction.user_id == user_id,
+                func.date(LLMInteraction.created_at) >= start_date,
+                func.date(LLMInteraction.created_at) <= end_date,
+            )
+            .all()
+        )
 
         # Aggregate by agent type
         by_agent = {}
@@ -323,7 +326,7 @@ class UsageTracker:
                     "tokens": 0,
                     "cost_usd": 0.0,
                     "avg_latency_ms": 0,
-                    "errors": 0
+                    "errors": 0,
                 }
             by_agent[agent]["calls"] += 1
             by_agent[agent]["tokens"] += interaction.total_tokens or 0

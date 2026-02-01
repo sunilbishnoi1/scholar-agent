@@ -7,5 +7,5 @@ __all__ = [
     "ConnectionManager",
     "EventType",
     "broadcast_agent_update",
-    "get_connection_manager"
+    "get_connection_manager",
 ]

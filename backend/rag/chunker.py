@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class ChunkType(Enum):
     """Types of chunks in academic papers."""
+
     ABSTRACT = "abstract"
     INTRODUCTION = "introduction"
     METHODOLOGY = "methodology"
@@ -29,6 +30,7 @@ class ChunkType(Enum):
 @dataclass
 class PaperChunk:
     """Represents a chunk of a paper."""
+
     content: str
     chunk_type: ChunkType
     paper_id: str
@@ -59,7 +61,7 @@ class PaperChunk:
 class SemanticChunker:
     """
     Semantic chunker for academic papers.
-    
+
     Features:
     - Section-aware chunking (respects paper structure)
     - Sliding window with overlap for long sections
@@ -96,11 +98,11 @@ class SemanticChunker:
         max_chunk_size: int = 512,
         min_chunk_size: int = 100,
         overlap_size: int = 50,
-        include_title_in_chunks: bool = True
+        include_title_in_chunks: bool = True,
     ):
         """
         Initialize the semantic chunker.
-        
+
         Args:
             max_chunk_size: Maximum tokens per chunk
             min_chunk_size: Minimum tokens per chunk (avoid tiny chunks)
@@ -157,19 +159,14 @@ class SemanticChunker:
 
         # Add any text before first section
         if section_starts[0][0] > 0:
-            prefix = text[:section_starts[0][0]].strip()
+            prefix = text[: section_starts[0][0]].strip()
             if prefix:
                 sections.insert(0, (ChunkType.GENERAL, prefix))
 
         return sections
 
     def _sliding_window_chunk(
-        self,
-        text: str,
-        paper_id: str,
-        paper_title: str,
-        chunk_type: ChunkType,
-        start_index: int
+        self, text: str, paper_id: str, paper_title: str, chunk_type: ChunkType, start_index: int
     ) -> list[PaperChunk]:
         """Create chunks using sliding window approach."""
         chunks = []
@@ -190,9 +187,7 @@ class SemanticChunker:
             if end < len(text):
                 # Look for sentence end within last 20% of chunk
                 look_back = int(char_window * 0.2)
-                sentence_end = self._find_sentence_boundary(
-                    text[end - look_back:end + look_back]
-                )
+                sentence_end = self._find_sentence_boundary(text[end - look_back : end + look_back])
                 if sentence_end >= 0:
                     end = end - look_back + sentence_end
 
@@ -238,11 +233,11 @@ class SemanticChunker:
         """Find the best sentence boundary in text."""
         # Look for sentence-ending punctuation followed by space
         patterns = [
-            r'\. ',
-            r'\? ',
-            r'! ',
-            r'\.\n',
-            r'\n\n',
+            r"\. ",
+            r"\? ",
+            r"! ",
+            r"\.\n",
+            r"\n\n",
         ]
 
         best_pos = -1
@@ -255,7 +250,7 @@ class SemanticChunker:
     def chunk_paper(self, paper: dict) -> list[PaperChunk]:
         """
         Chunk a paper into semantic chunks.
-        
+
         Args:
             paper: Dictionary with paper data including:
                 - id: Paper ID
@@ -263,7 +258,7 @@ class SemanticChunker:
                 - abstract: Paper abstract
                 - full_text (optional): Full paper text
                 - authors (optional): List of authors
-                
+
         Returns:
             List of PaperChunk objects
         """
@@ -285,15 +280,17 @@ class SemanticChunker:
                     author_str += " et al."
                 title_content += f" by {author_str}"
 
-            chunks.append(PaperChunk(
-                content=title_content,
-                chunk_type=ChunkType.TITLE,
-                paper_id=paper_id,
-                paper_title=paper_title,
-                chunk_index=chunk_index,
-                token_count=self._estimate_tokens(title_content),
-                weight=self.SECTION_WEIGHTS[ChunkType.TITLE],
-            ))
+            chunks.append(
+                PaperChunk(
+                    content=title_content,
+                    chunk_type=ChunkType.TITLE,
+                    paper_id=paper_id,
+                    paper_title=paper_title,
+                    chunk_index=chunk_index,
+                    token_count=self._estimate_tokens(title_content),
+                    weight=self.SECTION_WEIGHTS[ChunkType.TITLE],
+                )
+            )
             chunk_index += 1
 
         # 2. Abstract chunk (high weight, usually fits in one chunk)
@@ -301,21 +298,22 @@ class SemanticChunker:
             abstract_content = f"Abstract: {abstract}"
 
             if self._estimate_tokens(abstract_content) <= self.max_chunk_size:
-                chunks.append(PaperChunk(
-                    content=abstract_content,
-                    chunk_type=ChunkType.ABSTRACT,
-                    paper_id=paper_id,
-                    paper_title=paper_title,
-                    chunk_index=chunk_index,
-                    token_count=self._estimate_tokens(abstract_content),
-                    weight=self.SECTION_WEIGHTS[ChunkType.ABSTRACT],
-                ))
+                chunks.append(
+                    PaperChunk(
+                        content=abstract_content,
+                        chunk_type=ChunkType.ABSTRACT,
+                        paper_id=paper_id,
+                        paper_title=paper_title,
+                        chunk_index=chunk_index,
+                        token_count=self._estimate_tokens(abstract_content),
+                        weight=self.SECTION_WEIGHTS[ChunkType.ABSTRACT],
+                    )
+                )
                 chunk_index += 1
             else:
                 # Abstract too long, use sliding window
                 abstract_chunks = self._sliding_window_chunk(
-                    abstract_content, paper_id, paper_title,
-                    ChunkType.ABSTRACT, chunk_index
+                    abstract_content, paper_id, paper_title, ChunkType.ABSTRACT, chunk_index
                 )
                 chunks.extend(abstract_chunks)
                 chunk_index += len(abstract_chunks)
@@ -330,25 +328,22 @@ class SemanticChunker:
                     continue
 
                 section_chunks = self._sliding_window_chunk(
-                    section_text, paper_id, paper_title,
-                    section_type, chunk_index
+                    section_text, paper_id, paper_title, section_type, chunk_index
                 )
                 chunks.extend(section_chunks)
                 chunk_index += len(section_chunks)
 
-        logger.debug(
-            f"Chunked paper '{paper_title[:50]}...' into {len(chunks)} chunks"
-        )
+        logger.debug(f"Chunked paper '{paper_title[:50]}...' into {len(chunks)} chunks")
 
         return chunks
 
     def chunk_papers(self, papers: list[dict]) -> list[PaperChunk]:
         """
         Chunk multiple papers.
-        
+
         Args:
             papers: List of paper dictionaries
-            
+
         Returns:
             List of all PaperChunk objects
         """
@@ -367,12 +362,6 @@ class SemanticChunker:
         return all_chunks
 
 
-def create_chunker(
-    max_chunk_size: int = 512,
-    overlap_size: int = 50
-) -> SemanticChunker:
+def create_chunker(max_chunk_size: int = 512, overlap_size: int = 50) -> SemanticChunker:
     """Factory function to create a configured chunker."""
-    return SemanticChunker(
-        max_chunk_size=max_chunk_size,
-        overlap_size=overlap_size
-    )
+    return SemanticChunker(max_chunk_size=max_chunk_size, overlap_size=overlap_size)

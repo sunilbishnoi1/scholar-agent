@@ -74,10 +74,7 @@ class TestRetryDecorator:
         """Non-retryable exceptions should not be retried."""
         call_count = {"count": 0}
 
-        @with_retry(
-            config=RetryConfig(max_retries=3),
-            non_retryable_exceptions=(ValueError,)
-        )
+        @with_retry(config=RetryConfig(max_retries=3), non_retryable_exceptions=(ValueError,))
         def non_retryable_function():
             call_count["count"] += 1
             raise ValueError("Invalid input")
@@ -94,12 +91,7 @@ class TestRetryDecorator:
         timestamps = []
 
         @with_retry(
-            config=RetryConfig(
-                max_retries=3,
-                initial_delay=0.1,
-                exponential_base=2.0,
-                jitter=False
-            )
+            config=RetryConfig(max_retries=3, initial_delay=0.1, exponential_base=2.0, jitter=False)
         )
         def failing_function():
             call_count["count"] += 1
@@ -123,13 +115,10 @@ class TestRetryDecorator:
 
     def test_retry_respects_max_delay(self):
         """Retry should cap delay at max_delay."""
+
         @with_retry(
             config=RetryConfig(
-                max_retries=10,
-                initial_delay=1.0,
-                max_delay=2.0,
-                exponential_base=2.0,
-                jitter=False
+                max_retries=10, initial_delay=1.0, max_delay=2.0, exponential_base=2.0, jitter=False
             )
         )
         def function():
@@ -148,10 +137,7 @@ class TestRetryDecorator:
         def on_retry(error_ctx: ErrorContext):
             retry_contexts.append(error_ctx)
 
-        @with_retry(
-            config=RetryConfig(max_retries=2, initial_delay=0.01),
-            on_retry=on_retry
-        )
+        @with_retry(config=RetryConfig(max_retries=2, initial_delay=0.01), on_retry=on_retry)
         def failing_function():
             call_count["count"] += 1
             if call_count["count"] < 3:
@@ -331,9 +317,7 @@ class TestRetryableAndNonRetryableErrors:
     def test_retryable_error_includes_metadata(self):
         """RetryableError should include category and severity."""
         error = RetryableError(
-            "Temporary failure",
-            category=ErrorCategory.TIMEOUT,
-            severity=ErrorSeverity.LOW
+            "Temporary failure", category=ErrorCategory.TIMEOUT, severity=ErrorSeverity.LOW
         )
 
         assert str(error) == "Temporary failure"
@@ -343,9 +327,7 @@ class TestRetryableAndNonRetryableErrors:
     def test_non_retryable_error_includes_metadata(self):
         """NonRetryableError should include category and severity."""
         error = NonRetryableError(
-            "Invalid API key",
-            category=ErrorCategory.CLIENT_ERROR,
-            severity=ErrorSeverity.HIGH
+            "Invalid API key", category=ErrorCategory.CLIENT_ERROR, severity=ErrorSeverity.HIGH
         )
 
         assert str(error) == "Invalid API key"
@@ -388,7 +370,7 @@ class TestErrorContext:
             severity=ErrorSeverity.MEDIUM,
             message="Request timed out",
             retry_count=2,
-            total_delay=5.0
+            total_delay=5.0,
         )
 
         assert ctx.error_type == ErrorCategory.TIMEOUT
@@ -405,7 +387,7 @@ class TestErrorContext:
             error_type=ErrorCategory.VALIDATION,
             severity=ErrorSeverity.LOW,
             message="Validation failed",
-            original_exception=original
+            original_exception=original,
         )
 
         assert ctx.original_exception is original

@@ -1,4 +1,5 @@
 """Setup configuration for scholar-agent backend."""
+
 from setuptools import find_packages, setup
 
 setup(

@@ -11,6 +11,7 @@ from typing import Annotated, Any, TypedDict
 
 class AgentType(str, Enum):
     """Enumeration of agent types in the pipeline."""
+
     PLANNER = "planner"
     RETRIEVER = "retriever"
     ANALYZER = "analyzer"
@@ -20,6 +21,7 @@ class AgentType(str, Enum):
 
 class PaperData(TypedDict):
     """Structure for paper data throughout the pipeline."""
+
     id: str
     title: str
     abstract: str
@@ -32,6 +34,7 @@ class PaperData(TypedDict):
 
 class AgentMessage(TypedDict):
     """Structure for messages passed between agents."""
+
     agent: str
     action: str
     content: Any
@@ -41,10 +44,11 @@ class AgentMessage(TypedDict):
 class AgentState(TypedDict):
     """
     The shared state that flows through the LangGraph pipeline.
-    
+
     This state is passed between agents and contains all the information
     needed to complete the research task.
     """
+
     # Core identifiers
     project_id: str
     user_id: str
@@ -102,11 +106,11 @@ def create_initial_state(
     max_iterations: int = 3,
     relevance_threshold: float = 60.0,
     academic_level: str = "graduate",
-    target_word_count: int = 500
+    target_word_count: int = 500,
 ) -> AgentState:
     """
     Factory function to create a properly initialized AgentState.
-    
+
     Args:
         project_id: Database ID of the research project
         user_id: Database ID of the user
@@ -117,7 +121,7 @@ def create_initial_state(
         relevance_threshold: Minimum relevance score (0-100) to include a paper
         academic_level: Academic level for writing style
         target_word_count: Target word count for synthesis
-        
+
     Returns:
         AgentState: A fully initialized state dictionary
     """
@@ -125,42 +129,33 @@ def create_initial_state(
         # Core identifiers
         project_id=project_id,
         user_id=user_id,
-
         # Research inputs
         title=title,
         research_question=research_question,
-
         # Planner outputs (initialized empty)
         keywords=[],
         subtopics=[],
         search_strategy={},
-
         # Retriever outputs
         papers=[],
         total_papers_found=0,
-
         # Analyzer outputs
         analyzed_papers=[],
         high_quality_papers=[],
-
         # Synthesizer outputs
         synthesis="",
         synthesis_sections=[],
-
         # Quality control
         quality_score=0.0,
         quality_feedback="",
-
         # Pipeline control
         current_agent=AgentType.PLANNER,
         iteration=0,
         max_iterations=max_iterations,
         messages=[],
-
         # Error handling
         errors=[],
         status="running",
-
         # Configuration
         max_papers=max_papers,
         relevance_threshold=relevance_threshold,
@@ -173,10 +168,11 @@ def create_initial_state(
 class AgentResult:
     """
     Result wrapper for agent execution.
-    
+
     Provides a consistent interface for agent outputs with
     success/failure tracking and metadata.
     """
+
     success: bool
     data: Any
     error: str | None = None
@@ -188,5 +184,5 @@ class AgentResult:
             agent=agent,
             action=action,
             content=self.data if self.success else self.error,
-            timestamp=datetime.now(UTC).isoformat()
+            timestamp=datetime.now(UTC).isoformat(),
         )

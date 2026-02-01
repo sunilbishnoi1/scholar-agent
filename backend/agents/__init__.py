@@ -80,22 +80,18 @@ __all__ = [
     "AgentMessage",
     "PaperData",
     "create_initial_state",
-
     # Base classes
     "BaseAgent",
     "ToolEnabledAgent",
-
     # Agents
     "ResearchPlannerAgent",
     "PaperRetrieverAgent",
     "PaperAnalyzerAgent",
     "SynthesisExecutorAgent",
     "QualityCheckerAgent",
-
     # Orchestrator
     "ResearchOrchestrator",
     "create_orchestrator",
-
     # Observability
     "AgentTracer",
     "tracer",
@@ -104,12 +100,10 @@ __all__ = [
     "LLMTrace",
     "AgentTrace",
     "StructuredLogger",
-
     # Model Router (Legacy - Phase 1)
     "SmartModelRouter",
     "RoutingDecision",
     "get_router",
-
     # Error Handling (Phase 1)
     "with_retry",
     "RetryConfig",
@@ -120,7 +114,6 @@ __all__ = [
     "RetryableError",
     "NonRetryableError",
     "ErrorContext",
-
     # LLM Providers (Phase 2 - New Architecture)
     "BaseLLMClient",
     "LLMResponse",
@@ -136,7 +129,6 @@ __all__ = [
     "GROQ_MODELS",
     "GEMINI_MODELS",
     "get_model_config",
-
     # Legacy/Client (backward compatible)
     "GeminiClient",
 ]

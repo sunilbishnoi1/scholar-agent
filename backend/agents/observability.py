@@ -16,6 +16,7 @@ from typing import Any
 
 class LogLevel(str, Enum):
     """Log levels for structured logging."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -26,6 +27,7 @@ class LogLevel(str, Enum):
 @dataclass
 class LLMTrace:
     """Structured trace data for LLM calls."""
+
     trace_id: str
     agent_name: str
     model: str
@@ -45,6 +47,7 @@ class LLMTrace:
 @dataclass
 class AgentTrace:
     """Structured trace data for agent execution."""
+
     trace_id: str
     agent_name: str
     action: str
@@ -60,7 +63,7 @@ class AgentTrace:
 class StructuredLogger:
     """
     Structured logging for agent observability.
-    
+
     Outputs JSON-formatted logs that can be parsed by log aggregation
     systems like ELK, Datadog, or CloudWatch.
     """
@@ -77,11 +80,7 @@ class StructuredLogger:
 
     def _log(self, level: LogLevel, message: str, **kwargs):
         """Internal log method with structured data."""
-        log_data = {
-            "message": message,
-            "timestamp": datetime.now(UTC).isoformat(),
-            **kwargs
-        }
+        log_data = {"message": message, "timestamp": datetime.now(UTC).isoformat(), **kwargs}
 
         log_method = getattr(self.logger, level.value.lower())
         log_method(json.dumps(log_data))
@@ -110,7 +109,7 @@ class StructuredLogger:
             model=trace.model,
             tokens=trace.total_tokens,
             latency_ms=trace.latency_ms,
-            success=trace.success
+            success=trace.success,
         )
 
     def log_agent_step(self, trace: AgentTrace):
@@ -121,7 +120,7 @@ class StructuredLogger:
             agent=trace.agent_name,
             action=trace.action,
             duration_ms=trace.duration_ms,
-            success=trace.success
+            success=trace.success,
         )
 
 
@@ -137,18 +136,20 @@ class JsonFormatter(logging.Formatter):
             return json.dumps(log_data)
         except json.JSONDecodeError:
             # Fall back to standard formatting
-            return json.dumps({
-                "level": record.levelname,
-                "logger": record.name,
-                "message": record.getMessage(),
-                "timestamp": datetime.now(UTC).isoformat()
-            })
+            return json.dumps(
+                {
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
 
 
 class AgentTracer:
     """
     Tracer for agent operations.
-    
+
     Provides decorators and context managers for tracing:
     - LLM calls with token counts and costs
     - Agent workflow steps
@@ -161,7 +162,7 @@ class AgentTracer:
         "gemini-2.5-flash-lite": 0.00001,
         "gemini-2.0-flash": 0.0001,
         "gemini-1.5-pro": 0.001,
-        "default": 0.0001
+        "default": 0.0001,
     }
 
     def __init__(self, service_name: str = "scholar-agent"):
@@ -188,12 +189,13 @@ class AgentTracer:
     def trace_llm_call(self, agent_name: str, model: str = "gemini-2.5-flash-lite"):
         """
         Decorator to trace LLM calls.
-        
+
         Usage:
             @tracer.trace_llm_call("analyzer", "gemini-2.0-flash")
             def analyze_paper(self, prompt: str) -> str:
                 return self.llm_client.chat(prompt)
         """
+
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
@@ -226,7 +228,7 @@ class AgentTracer:
                         cost_usd=self._calculate_cost(model, prompt_tokens, completion_tokens),
                         prompt_preview=prompt[:200],
                         response_preview=str(result)[:200],
-                        success=True
+                        success=True,
                     )
 
                     self.logger.log_llm_call(trace)
@@ -248,24 +250,26 @@ class AgentTracer:
                         prompt_preview=prompt[:200],
                         response_preview="",
                         success=False,
-                        error=str(e)
+                        error=str(e),
                     )
 
                     self.logger.log_llm_call(trace)
                     raise
 
             return wrapper
+
         return decorator
 
     def trace_agent_step(self, agent_name: str, action: str):
         """
         Decorator to trace agent workflow steps.
-        
+
         Usage:
             @tracer.trace_agent_step("planner", "generate_keywords")
             async def generate_keywords(self, state):
                 ...
         """
+
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
@@ -277,6 +281,7 @@ class AgentTracer:
 
             # Return appropriate wrapper based on function type
             import asyncio
+
             if asyncio.iscoroutinefunction(func):
                 return async_wrapper
             return sync_wrapper
@@ -300,7 +305,7 @@ class AgentTracer:
                 duration_ms=(time.time() - start_time) * 1000,
                 success=True,
                 input_summary=input_summary,
-                output_summary=self._summarize_output(result)
+                output_summary=self._summarize_output(result),
             )
 
             self.logger.log_agent_step(trace)
@@ -315,7 +320,7 @@ class AgentTracer:
                 success=False,
                 input_summary=input_summary,
                 output_summary="",
-                error=str(e)
+                error=str(e),
             )
 
             self.logger.log_agent_step(trace)
@@ -338,7 +343,7 @@ class AgentTracer:
                 duration_ms=(time.time() - start_time) * 1000,
                 success=True,
                 input_summary=input_summary,
-                output_summary=self._summarize_output(result)
+                output_summary=self._summarize_output(result),
             )
 
             self.logger.log_agent_step(trace)
@@ -353,7 +358,7 @@ class AgentTracer:
                 success=False,
                 input_summary=input_summary,
                 output_summary="",
-                error=str(e)
+                error=str(e),
             )
 
             self.logger.log_agent_step(trace)
@@ -377,7 +382,7 @@ class AgentTracer:
     def trace_operation(self, operation_name: str, **metadata):
         """
         Context manager for tracing arbitrary operations.
-        
+
         Usage:
             with tracer.trace_operation("fetch_papers", source="arxiv"):
                 papers = fetch_from_arxiv(query)
@@ -389,7 +394,7 @@ class AgentTracer:
             f"OPERATION_START: {operation_name}",
             trace_id=trace_id,
             operation=operation_name,
-            **metadata
+            **metadata,
         )
 
         try:
@@ -402,7 +407,7 @@ class AgentTracer:
                 operation=operation_name,
                 duration_ms=duration_ms,
                 success=True,
-                **metadata
+                **metadata,
             )
 
         except Exception as e:
@@ -415,7 +420,7 @@ class AgentTracer:
                 success=False,
                 error=str(e),
                 traceback=traceback.format_exc(),
-                **metadata
+                **metadata,
             )
             raise
 

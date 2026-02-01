@@ -18,6 +18,7 @@ from agents.state import AgentState, create_initial_state
 # Fixtures for E2E Tests
 # ============================================
 
+
 @pytest.fixture
 def comprehensive_mock_llm():
     """Create a mock LLM client with realistic responses for all agents."""
@@ -28,7 +29,7 @@ def comprehensive_mock_llm():
 
         # Planner responses
         if "keywords" in prompt_lower or "plan" in prompt_lower:
-            return '''
+            return """
             {
                 "keywords": [
                     "artificial intelligence",
@@ -49,11 +50,11 @@ def comprehensive_mock_llm():
                     "adaptive learning systems"
                 ]
             }
-            '''
+            """
 
         # Analyzer responses
         elif "analyze" in prompt_lower or "relevance" in prompt_lower:
-            return '''
+            return """
             {
                 "relevance_score": 87,
                 "justification": "This paper directly addresses the research question by examining AI applications in educational settings.",
@@ -73,11 +74,11 @@ def comprehensive_mock_llm():
                     "Our findings suggest that AI-powered adaptive systems represent a paradigm shift in personalized education."
                 ]
             }
-            '''
+            """
 
         # Quality checker responses
         elif "quality" in prompt_lower or "evaluate" in prompt_lower:
-            return '''
+            return """
             {
                 "quality_score": 8.2,
                 "strengths": [
@@ -96,11 +97,11 @@ def comprehensive_mock_llm():
                     "Include international perspectives"
                 ]
             }
-            '''
+            """
 
         # Synthesizer responses
         elif "synthesize" in prompt_lower or "synthesis" in prompt_lower:
-            return '''
+            return """
 # Literature Review: Artificial Intelligence in Higher Education
 
 ## Executive Summary
@@ -150,7 +151,7 @@ careful implementation and continued research are essential.
 ## References
 
 [Generated references would appear here]
-            '''
+            """
 
         else:
             return "Generic response for unmatched prompt"
@@ -163,41 +164,44 @@ careful implementation and continued research are essential.
 def mock_paper_retriever():
     """Mock paper retriever with realistic paper data."""
     mock = Mock()
-    mock.search_papers = Mock(return_value=[
-        {
-            "id": "arxiv-2024-001",
-            "title": "Machine Learning Applications in Educational Assessment",
-            "abstract": "This paper presents a comprehensive study of ML algorithms for predicting student outcomes...",
-            "authors": ["Smith, J.", "Johnson, A.", "Williams, B."],
-            "url": "https://arxiv.org/abs/2024.12345",
-            "source": "arXiv",
-            "published_date": "2024-01-15"
-        },
-        {
-            "id": "ss-2024-002",
-            "title": "Adaptive Learning Systems: A Systematic Review",
-            "abstract": "We review the effectiveness of AI-powered adaptive learning platforms...",
-            "authors": ["Chen, L."],
-            "url": "https://semanticscholar.org/paper/abc123",
-            "source": "Semantic Scholar",
-            "published_date": "2024-02-20"
-        },
-        {
-            "id": "arxiv-2024-003",
-            "title": "Deep Learning for Student Performance Prediction",
-            "abstract": "Neural network approaches for early identification of at-risk students...",
-            "authors": ["Lee, K.", "Park, S."],
-            "url": "https://arxiv.org/abs/2024.67890",
-            "source": "arXiv",
-            "published_date": "2024-03-10"
-        }
-    ])
+    mock.search_papers = Mock(
+        return_value=[
+            {
+                "id": "arxiv-2024-001",
+                "title": "Machine Learning Applications in Educational Assessment",
+                "abstract": "This paper presents a comprehensive study of ML algorithms for predicting student outcomes...",
+                "authors": ["Smith, J.", "Johnson, A.", "Williams, B."],
+                "url": "https://arxiv.org/abs/2024.12345",
+                "source": "arXiv",
+                "published_date": "2024-01-15",
+            },
+            {
+                "id": "ss-2024-002",
+                "title": "Adaptive Learning Systems: A Systematic Review",
+                "abstract": "We review the effectiveness of AI-powered adaptive learning platforms...",
+                "authors": ["Chen, L."],
+                "url": "https://semanticscholar.org/paper/abc123",
+                "source": "Semantic Scholar",
+                "published_date": "2024-02-20",
+            },
+            {
+                "id": "arxiv-2024-003",
+                "title": "Deep Learning for Student Performance Prediction",
+                "abstract": "Neural network approaches for early identification of at-risk students...",
+                "authors": ["Lee, K.", "Park, S."],
+                "url": "https://arxiv.org/abs/2024.67890",
+                "source": "arXiv",
+                "published_date": "2024-03-10",
+            },
+        ]
+    )
     return mock
 
 
 # ============================================
 # E2E Pipeline Tests
 # ============================================
+
 
 @pytest.mark.integration
 class TestEndToEndPipeline:
@@ -207,14 +211,14 @@ class TestEndToEndPipeline:
         """Test complete pipeline from start to finish."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-001",
                 user_id="test-user",
                 title="AI in Higher Education",
                 research_question="How does artificial intelligence impact student learning outcomes in higher education?",
                 max_papers=10,
-                max_iterations=2
+                max_iterations=2,
             )
 
         # Verify pipeline completion
@@ -237,19 +241,22 @@ class TestEndToEndPipeline:
         """Test that pipeline generates a synthesis document."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-002",
                 user_id="test-user",
                 title="ML in Education",
                 research_question="How can machine learning improve educational outcomes?",
-                max_papers=5
+                max_papers=5,
             )
 
         # Verify synthesis was generated
         if final_state.get("synthesis"):
             assert len(final_state["synthesis"]) > 100  # Non-trivial content
-            assert "learning" in final_state["synthesis"].lower() or "education" in final_state["synthesis"].lower()
+            assert (
+                "learning" in final_state["synthesis"].lower()
+                or "education" in final_state["synthesis"].lower()
+            )
 
     def test_pipeline_handles_no_papers_gracefully(self, comprehensive_mock_llm):
         """Test pipeline handles case when no papers are found."""
@@ -258,13 +265,13 @@ class TestEndToEndPipeline:
 
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_empty_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_empty_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-003",
                 user_id="test-user",
                 title="Obscure Topic",
                 research_question="What is the impact of quantum computing on ancient basket weaving?",
-                max_papers=5
+                max_papers=5,
             )
 
         # Should complete but with appropriate status
@@ -274,14 +281,14 @@ class TestEndToEndPipeline:
         """Test that pipeline respects max_iterations limit."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-004",
                 user_id="test-user",
                 title="Iteration Test",
                 research_question="Test question",
                 max_papers=5,
-                max_iterations=1  # Very limited
+                max_iterations=1,  # Very limited
             )
 
         # Should not exceed max iterations
@@ -292,21 +299,17 @@ class TestEndToEndPipeline:
         progress_updates = []
 
         def progress_callback(agent, message, percent):
-            progress_updates.append({
-                "agent": agent,
-                "message": message,
-                "percent": percent
-            })
+            progress_updates.append({"agent": agent, "message": message, "percent": percent})
 
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm, progress_callback)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             orchestrator.run_sync(
                 project_id="e2e-test-005",
                 user_id="test-user",
                 title="Progress Test",
                 research_question="Test progress tracking",
-                max_papers=3
+                max_papers=3,
             )
 
         # Should have recorded progress updates
@@ -320,6 +323,7 @@ class TestEndToEndPipeline:
 # ============================================
 # Resilience Tests
 # ============================================
+
 
 @pytest.mark.integration
 class TestPipelineResilience:
@@ -342,14 +346,14 @@ class TestPipelineResilience:
 
         # Should eventually succeed despite initial failures
         # The actual behavior depends on retry logic in agents
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             try:
                 final_state = orchestrator.run_sync(
                     project_id="resilience-test-001",
                     user_id="test-user",
                     title="Resilience Test",
                     research_question="Test question",
-                    max_papers=3
+                    max_papers=3,
                 )
                 # If it completes, verify it handled errors
                 assert final_state["status"] in ["completed", "error"]
@@ -359,6 +363,7 @@ class TestPipelineResilience:
 
     def test_handles_malformed_llm_responses(self, mock_paper_retriever):
         """Test handling of malformed LLM responses."""
+
         def malformed_response(prompt):
             if "keywords" in prompt.lower():
                 return "This is not valid JSON at all"
@@ -369,13 +374,13 @@ class TestPipelineResilience:
 
         orchestrator = ResearchOrchestrator(mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="malformed-test-001",
                 user_id="test-user",
                 title="Malformed Test",
                 research_question="Test",
-                max_papers=3
+                max_papers=3,
             )
 
         # Should complete with graceful degradation
@@ -386,6 +391,7 @@ class TestPipelineResilience:
 # Data Flow Tests
 # ============================================
 
+
 @pytest.mark.integration
 class TestDataFlow:
     """Tests for data flow between agents."""
@@ -394,13 +400,13 @@ class TestDataFlow:
         """Test that planner keywords are used by retriever."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-001",
                 user_id="test-user",
                 title="Data Flow Test",
                 research_question="How does AI affect education?",
-                max_papers=5
+                max_papers=5,
             )
 
         # Verify keywords were generated
@@ -413,21 +419,20 @@ class TestDataFlow:
         """Test that retrieved papers are analyzed."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-002",
                 user_id="test-user",
                 title="Paper Analysis Test",
                 research_question="Test question",
-                max_papers=5
+                max_papers=5,
             )
 
         # If papers were found, they should be analyzed
         if final_state.get("papers"):
             # Either analyzed_papers exists or papers have analysis
-            has_analysis = (
-                len(final_state.get("analyzed_papers", [])) > 0 or
-                any(p.get("analysis") for p in final_state.get("papers", []))
+            has_analysis = len(final_state.get("analyzed_papers", [])) > 0 or any(
+                p.get("analysis") for p in final_state.get("papers", [])
             )
             assert has_analysis or final_state["status"] != "completed"
 
@@ -435,13 +440,13 @@ class TestDataFlow:
         """Test that paper analyses are used in synthesis."""
         orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
 
-        with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+        with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-003",
                 user_id="test-user",
                 title="Synthesis Test",
                 research_question="How does AI improve learning?",
-                max_papers=5
+                max_papers=5,
             )
 
         # If synthesis exists, it should be based on analyzed papers
@@ -452,6 +457,7 @@ class TestDataFlow:
 # ============================================
 # Concurrent Execution Tests
 # ============================================
+
 
 @pytest.mark.integration
 @pytest.mark.slow
@@ -468,13 +474,15 @@ class TestConcurrentExecution:
         def run_pipeline(project_id):
             try:
                 orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-                with patch('agents.retriever_agent.PaperRetriever', return_value=mock_paper_retriever):
+                with patch(
+                    "agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever
+                ):
                     final_state = orchestrator.run_sync(
                         project_id=project_id,
                         user_id="test-user",
                         title=f"Concurrent Test {project_id}",
                         research_question="Test question",
-                        max_papers=3
+                        max_papers=3,
                     )
                 results[project_id] = final_state["status"]
             except Exception as e:
@@ -482,8 +490,7 @@ class TestConcurrentExecution:
 
         # Run 3 pipelines concurrently
         threads = [
-            threading.Thread(target=run_pipeline, args=(f"concurrent-{i}",))
-            for i in range(3)
+            threading.Thread(target=run_pipeline, args=(f"concurrent-{i}",)) for i in range(3)
         ]
 
         for t in threads:

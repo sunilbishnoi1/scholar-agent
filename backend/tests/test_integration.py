@@ -44,16 +44,16 @@ def _get_mock_response(prompt: str) -> str:
     prompt_lower = prompt.lower()
 
     if "keywords" in prompt_lower or "planner" in prompt_lower:
-        return '''
+        return """
         {
             "keywords": ["artificial intelligence", "machine learning", "education"],
             "subtopics": ["Learning Analytics", "Adaptive Systems", "Student Performance"],
             "search_terms": ["AI in education", "machine learning for learning", "educational data mining"]
         }
-        '''
+        """
 
     elif "analyze" in prompt_lower or "relevance" in prompt_lower:
-        return '''
+        return """
         {
             "relevance_score": 85,
             "justification": "Highly relevant to AI in education research",
@@ -66,10 +66,10 @@ def _get_mock_response(prompt: str) -> str:
             "limitations": ["Limited sample diversity", "Short study duration"],
             "contribution": "Demonstrates practical applications of AI in classroom settings"
         }
-        '''
+        """
 
     elif "synthesize" in prompt_lower or "synthesis" in prompt_lower:
-        return '''
+        return """
         # Literature Review: AI in Education
         
         ## Introduction
@@ -87,17 +87,17 @@ def _get_mock_response(prompt: str) -> str:
         
         ## Conclusion
         AI has significant potential but requires careful implementation.
-        '''
+        """
 
     elif "quality" in prompt_lower or "evaluate" in prompt_lower:
-        return '''
+        return """
         {
             "overall_score": 85,
             "criteria_scores": {"coherence": 85, "coverage": 90, "critical_analysis": 80},
             "feedback": "Comprehensive coverage and well-structured",
             "should_refine": false
         }
-        '''
+        """
 
     else:
         return "Mock response for general prompt"
@@ -118,7 +118,7 @@ class TestEndToEndResearchPipeline:
             project_id="test-project-001",
             user_id="test-user",
             title="AI in Education Research",
-            research_question="How does AI impact student learning outcomes?"
+            research_question="How does AI impact student learning outcomes?",
         )
 
         # Verify pipeline completion
@@ -135,8 +135,12 @@ class TestEndToEndResearchPipeline:
 
         # Check that expected agents ran (case-insensitive)
         agent_names_lower = [name.lower() for name in agent_names if name]
-        assert any("planner" in name for name in agent_names_lower), f"Planner not found in {agent_names}"
-        assert any("retriever" in name for name in agent_names_lower), f"Retriever not found in {agent_names}"
+        assert any(
+            "planner" in name for name in agent_names_lower
+        ), f"Planner not found in {agent_names}"
+        assert any(
+            "retriever" in name for name in agent_names_lower
+        ), f"Retriever not found in {agent_names}"
         # Analyzer and Synthesizer may not run if no papers found, so don't assert them
 
         # Verify we have keywords
@@ -169,7 +173,7 @@ class TestEndToEndResearchPipeline:
             project_id="test-failure",
             user_id="test-user",
             title="Test",
-            research_question="Test question?"
+            research_question="Test question?",
         )
         assert final_state["status"] == "completed"
 
@@ -178,19 +182,12 @@ class TestEndToEndResearchPipeline:
         progress_updates = []
 
         def progress_callback(agent_name, message, progress):
-            progress_updates.append({
-                "agent": agent_name,
-                "message": message,
-                "progress": progress
-            })
+            progress_updates.append({"agent": agent_name, "message": message, "progress": progress})
 
         orchestrator.progress_callback = progress_callback
 
         orchestrator.run_sync(
-            project_id="test-progress",
-            user_id="test-user",
-            title="Test",
-            research_question="Test?"
+            project_id="test-progress", user_id="test-user", title="Test", research_question="Test?"
         )
 
         # Should have received multiple progress updates
@@ -210,24 +207,24 @@ class TestEndToEndResearchPipeline:
                 refinement_count["count"] += 1
                 if refinement_count["count"] == 1:
                     # First synthesis is low quality - use correct field names
-                    return '''
+                    return """
                     {
                         "overall_score": 50,
                         "should_refine": true,
                         "criteria_scores": {"coherence": 40, "coverage": 50},
                         "feedback": "Too brief, missing key points"
                     }
-                    '''
+                    """
                 else:
                     # After refinement, quality improves
-                    return '''
+                    return """
                     {
                         "overall_score": 85,
                         "should_refine": false,
                         "criteria_scores": {"coherence": 85, "coverage": 90},
                         "feedback": "Comprehensive and well-structured"
                     }
-                    '''
+                    """
             return _get_mock_response(prompt)
 
         mock_gemini_client.chat = Mock(side_effect=chat_with_quality_check)
@@ -238,11 +235,13 @@ class TestEndToEndResearchPipeline:
             user_id="test-user",
             title="Test",
             research_question="Test?",
-            max_iterations=3  # Allow refinement
+            max_iterations=3,  # Allow refinement
         )
 
         # Should have gone through refinement (at least evaluated twice)
-        assert refinement_count["count"] >= 1, f"Quality checker was not called. Count: {refinement_count['count']}"
+        assert (
+            refinement_count["count"] >= 1
+        ), f"Quality checker was not called. Count: {refinement_count['count']}"
 
 
 class TestModelRouterIntegration:
@@ -254,8 +253,7 @@ class TestModelRouterIntegration:
 
         # Simple task should use cheap model
         decision = router.route(
-            task_type="extract_keywords",
-            prompt="Extract keywords from: AI in education"
+            task_type="extract_keywords", prompt="Extract keywords from: AI in education"
         )
 
         assert decision.model == ModelTier.FAST_CHEAP
@@ -268,7 +266,7 @@ class TestModelRouterIntegration:
         # Complex task should use powerful model
         decision = router.route(
             task_type="research_gap_identification",
-            prompt="Analyze the following 50 papers and identify research gaps: " + "X" * 2000
+            prompt="Analyze the following 50 papers and identify research gaps: " + "X" * 2000,
         )
 
         assert decision.model == ModelTier.POWERFUL
@@ -280,8 +278,7 @@ class TestModelRouterIntegration:
 
         # Even complex task should downgrade
         decision = router.route(
-            task_type="synthesis",
-            prompt="Synthesize findings from 30 papers: " + "X" * 1000
+            task_type="synthesis", prompt="Synthesize findings from 30 papers: " + "X" * 1000
         )
 
         assert decision.model == ModelTier.FAST_CHEAP
@@ -292,10 +289,7 @@ class TestModelRouterIntegration:
 
         # Make multiple routing decisions
         for i in range(5):
-            decision = router.route(
-                task_type="paper_analysis",
-                prompt="Analyze paper " + "X" * 500
-            )
+            decision = router.route(task_type="paper_analysis", prompt="Analyze paper " + "X" * 500)
             router.record_usage(decision.estimated_cost)
 
         # Should have tracked spending
@@ -328,10 +322,7 @@ class TestErrorHandlingIntegration:
         """Test that retry doesn't retry non-retryable errors."""
         call_count = {"count": 0}
 
-        @with_retry(
-            config=RetryConfig(max_retries=3),
-            non_retryable_exceptions=(ValueError,)
-        )
+        @with_retry(config=RetryConfig(max_retries=3), non_retryable_exceptions=(ValueError,))
         def non_retryable_function():
             call_count["count"] += 1
             raise ValueError("Invalid input")
@@ -356,6 +347,7 @@ class TestErrorHandlingIntegration:
 
         # Circuit should be open now
         from agents.error_handling import CircuitBreakerOpen
+
         with pytest.raises(CircuitBreakerOpen):
             breaker.call(failing_function)
 
@@ -397,7 +389,7 @@ class TestAPIEndToEnd:
                     "title": "AI-Powered Tutoring Systems",
                     "authors": ["Smith, J.", "Doe, A."],
                     "abstract": "This paper explores AI tutoring...",
-                    "url": "https://arxiv.org/abs/2301.12345"
+                    "url": "https://arxiv.org/abs/2301.12345",
                 }
             ],
             "semantic_scholar": [
@@ -406,17 +398,14 @@ class TestAPIEndToEnd:
                     "title": "Machine Learning in Education",
                     "authors": [{"name": "Johnson, K."}],
                     "abstract": "We investigate ML applications...",
-                    "url": "https://semanticscholar.org/paper/abc123"
+                    "url": "https://semanticscholar.org/paper/abc123",
                 }
-            ]
+            ],
         }
 
-    @patch('paper_retriever.PaperRetriever.search_papers')
+    @patch("paper_retriever.PaperRetriever.search_papers")
     def test_full_pipeline_with_real_paper_structure(
-        self,
-        mock_search,
-        mock_api_responses,
-        mock_gemini_client
+        self, mock_search, mock_api_responses, mock_gemini_client
     ):
         """Test pipeline with realistic paper data structures."""
         # Mock paper retrieval
@@ -428,7 +417,7 @@ class TestAPIEndToEnd:
             project_id="test-real-papers",
             user_id="test-user",
             title="AI Tutoring Systems",
-            research_question="What are the most effective AI tutoring approaches?"
+            research_question="What are the most effective AI tutoring approaches?",
         )
 
         # Verify papers were processed
@@ -452,7 +441,7 @@ class TestPerformanceAndScalability:
             project_id="test-performance",
             user_id="test-user",
             title="Test",
-            research_question="Test?"
+            research_question="Test?",
         )
         elapsed = time.time() - start_time
 
@@ -468,13 +457,13 @@ class TestPerformanceAndScalability:
                 "id": f"paper-{i}",
                 "title": f"Paper {i}",
                 "abstract": f"Abstract for paper {i}" * 10,
-                "url": f"https://example.com/{i}"
+                "url": f"https://example.com/{i}",
             }
             for i in range(50)
         ]
 
         # Patch the retriever to return many papers
-        with patch('paper_retriever.PaperRetriever.search_papers', return_value=mock_papers):
+        with patch("paper_retriever.PaperRetriever.search_papers", return_value=mock_papers):
             orchestrator = ResearchOrchestrator(mock_gemini_client)
 
             # Should handle large paper set without crashing
@@ -482,17 +471,20 @@ class TestPerformanceAndScalability:
                 project_id="test-scale",
                 user_id="test-user",
                 title="Test",
-                research_question="Test?"
+                research_question="Test?",
             )
             assert final_state["status"] == "completed"
 
 
 # Run integration tests with different configurations
-@pytest.mark.parametrize("budget,expected_tier", [
-    (10.0, ModelTier.POWERFUL),   # High budget
-    (1.0, ModelTier.BALANCED),     # Medium budget
-    (0.1, ModelTier.FAST_CHEAP),   # Low budget
-])
+@pytest.mark.parametrize(
+    "budget,expected_tier",
+    [
+        (10.0, ModelTier.POWERFUL),  # High budget
+        (1.0, ModelTier.BALANCED),  # Medium budget
+        (0.1, ModelTier.FAST_CHEAP),  # Low budget
+    ],
+)
 def test_budget_affects_model_selection(budget, expected_tier):
     """Test that budget correctly influences model selection."""
     router = SmartModelRouter(user_budget=budget)
@@ -503,14 +495,13 @@ def test_budget_affects_model_selection(budget, expected_tier):
         router.spent = budget * 0.9
 
     # Make a synthesis request (normally uses powerful model)
-    decision = router.route(
-        task_type="synthesis",
-        prompt="Synthesize findings: " + "X" * 500
-    )
+    decision = router.route(task_type="synthesis", prompt="Synthesize findings: " + "X" * 500)
 
     # With low budget and high spending, should downgrade
     if budget < 0.5:
-        assert decision.model == ModelTier.FAST_CHEAP, f"Expected FAST_CHEAP but got {decision.model} (budget={budget}, spent={router.spent})"
+        assert (
+            decision.model == ModelTier.FAST_CHEAP
+        ), f"Expected FAST_CHEAP but got {decision.model} (budget={budget}, spent={router.spent})"
     else:
         # With sufficient budget, should use appropriate tier
         assert decision.model in (ModelTier.BALANCED, ModelTier.POWERFUL)

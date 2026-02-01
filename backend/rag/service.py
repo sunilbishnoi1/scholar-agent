@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """
     High-level RAG service for the Scholar Agent.
-    
+
     Provides a unified interface for all RAG operations.
-    
+
     Usage:
         rag = RAGService()
-        
+
         # Ingest papers
         rag.ingest_papers(papers, project_id="project123")
-        
+
         # Search
         results = rag.search("machine learning in education", project_id="project123")
     """
@@ -45,7 +45,7 @@ class RAGService:
     ):
         """
         Initialize the RAG service.
-        
+
         Args:
             vector_store: Vector store instance (auto-created if None)
             embedding_service: Embedding service instance (auto-created if None)
@@ -94,12 +94,12 @@ class RAGService:
     ) -> dict[str, Any]:
         """
         Ingest papers into the RAG system.
-        
+
         Args:
             papers: List of paper dictionaries with title, abstract, etc.
             project_id: Project ID for isolation
             rebuild_bm25: Whether to rebuild the BM25 index
-            
+
         Returns:
             Dict with ingestion statistics
         """
@@ -152,7 +152,7 @@ class RAGService:
     ) -> list[dict[str, Any]]:
         """
         Search for relevant content.
-        
+
         Args:
             query: Search query
             project_id: Project ID to search within
@@ -160,7 +160,7 @@ class RAGService:
             use_hybrid: Use hybrid search (vector + BM25)
             use_reranker: Apply reranking to results
             chunk_types: Filter by chunk types
-            
+
         Returns:
             List of search results as dictionaries
         """
@@ -196,12 +196,12 @@ class RAGService:
     ) -> list[dict[str, Any]]:
         """
         Find papers similar to a given paper.
-        
+
         Args:
             paper_id: ID of the source paper
             project_id: Project ID
             top_k: Number of similar papers to return
-            
+
         Returns:
             List of similar paper results
         """
@@ -258,15 +258,15 @@ class RAGService:
     ) -> str:
         """
         Get relevant context for synthesis.
-        
+
         Retrieves and formats chunks for use in synthesis prompts.
-        
+
         Args:
             research_question: The research question
             project_id: Project ID
             max_chunks: Maximum chunks to retrieve
             max_tokens: Approximate token limit
-            
+
         Returns:
             Formatted context string
         """
@@ -302,19 +302,17 @@ class RAGService:
 
         context = "".join(context_parts)
 
-        logger.debug(
-            f"Retrieved {len(context_parts)} chunks ({total_chars} chars) for synthesis"
-        )
+        logger.debug(f"Retrieved {len(context_parts)} chunks ({total_chars} chars) for synthesis")
 
         return context
 
     def delete_project_data(self, project_id: str) -> dict[str, Any]:
         """
         Delete all RAG data for a project.
-        
+
         Args:
             project_id: Project ID to delete
-            
+
         Returns:
             Dict with deletion stats
         """
@@ -334,10 +332,10 @@ class RAGService:
     def get_project_stats(self, project_id: str) -> dict[str, Any]:
         """
         Get RAG statistics for a project.
-        
+
         Args:
             project_id: Project ID
-            
+
         Returns:
             Dict with project statistics
         """

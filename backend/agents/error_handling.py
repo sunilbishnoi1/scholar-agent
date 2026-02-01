@@ -12,42 +12,46 @@ from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class ErrorSeverity(str, Enum):
     """Error severity levels for prioritization and alerting."""
-    LOW = "low"           # Transient, will likely succeed on retry
-    MEDIUM = "medium"     # May need intervention but not critical
-    HIGH = "high"         # Requires immediate attention
-    CRITICAL = "critical" # System-level failure
+
+    LOW = "low"  # Transient, will likely succeed on retry
+    MEDIUM = "medium"  # May need intervention but not critical
+    HIGH = "high"  # Requires immediate attention
+    CRITICAL = "critical"  # System-level failure
 
 
 class ErrorCategory(str, Enum):
     """Categories of errors for handling strategy."""
-    RATE_LIMIT = "rate_limit"           # API rate limit exceeded
-    TIMEOUT = "timeout"                  # Request timed out
-    SERVER_ERROR = "server_error"        # 5xx errors
-    CLIENT_ERROR = "client_error"        # 4xx errors (non-retryable)
-    NETWORK = "network"                  # Network connectivity issues
-    VALIDATION = "validation"            # Input validation failed
-    QUOTA_EXCEEDED = "quota_exceeded"    # Usage quota exceeded
-    UNKNOWN = "unknown"                  # Unclassified error
+
+    RATE_LIMIT = "rate_limit"  # API rate limit exceeded
+    TIMEOUT = "timeout"  # Request timed out
+    SERVER_ERROR = "server_error"  # 5xx errors
+    CLIENT_ERROR = "client_error"  # 4xx errors (non-retryable)
+    NETWORK = "network"  # Network connectivity issues
+    VALIDATION = "validation"  # Input validation failed
+    QUOTA_EXCEEDED = "quota_exceeded"  # Usage quota exceeded
+    UNKNOWN = "unknown"  # Unclassified error
 
 
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior."""
+
     max_retries: int = 5
     initial_delay: float = 1.0  # seconds
-    max_delay: float = 60.0     # seconds
+    max_delay: float = 60.0  # seconds
     exponential_base: float = 2.0
-    jitter: bool = True         # Add randomness to prevent thundering herd
+    jitter: bool = True  # Add randomness to prevent thundering herd
 
 
 @dataclass
 class ErrorContext:
     """Rich error context for debugging and monitoring."""
+
     error_type: ErrorCategory
     severity: ErrorSeverity
     message: str
@@ -64,7 +68,7 @@ class ErrorContext:
 class CircuitBreaker:
     """
     Circuit breaker pattern to prevent cascading failures.
-    
+
     States:
     - CLOSED: Normal operation, requests pass through
     - OPEN: Too many failures, reject requests immediately
@@ -77,14 +81,11 @@ class CircuitBreaker:
         HALF_OPEN = "half_open"
 
     def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout: float = 60.0,
-        name: str = "default"
+        self, failure_threshold: int = 5, recovery_timeout: float = 60.0, name: str = "default"
     ):
         """
         Initialize circuit breaker.
-        
+
         Args:
             failure_threshold: Number of failures before opening circuit
             recovery_timeout: Seconds to wait before trying to recover
@@ -103,14 +104,14 @@ class CircuitBreaker:
     def call(self, func: Callable[..., T], *args, **kwargs) -> T:
         """
         Execute function with circuit breaker protection.
-        
+
         Args:
             func: Function to execute
             *args, **kwargs: Arguments to pass to function
-            
+
         Returns:
             Function result
-            
+
         Raises:
             CircuitBreakerOpen: If circuit is open
         """
@@ -155,11 +156,13 @@ class CircuitBreaker:
 
 class CircuitBreakerOpen(Exception):
     """Raised when circuit breaker is open."""
+
     pass
 
 
 class RetryableError(Exception):
     """Base class for errors that should be retried."""
+
     def __init__(self, message: str, category: ErrorCategory, severity: ErrorSeverity):
         super().__init__(message)
         self.category = category
@@ -168,6 +171,7 @@ class RetryableError(Exception):
 
 class NonRetryableError(Exception):
     """Base class for errors that should NOT be retried."""
+
     def __init__(self, message: str, category: ErrorCategory, severity: ErrorSeverity):
         super().__init__(message)
         self.category = category
@@ -178,17 +182,17 @@ def with_retry(
     config: RetryConfig | None = None,
     retryable_exceptions: tuple = (Exception,),
     non_retryable_exceptions: tuple = (NonRetryableError,),
-    on_retry: Callable[[ErrorContext], None] | None = None
+    on_retry: Callable[[ErrorContext], None] | None = None,
 ):
     """
     Decorator for automatic retry with exponential backoff.
-    
+
     Args:
         config: Retry configuration
         retryable_exceptions: Tuple of exception types to retry
         non_retryable_exceptions: Tuple of exception types to never retry
         on_retry: Optional callback called before each retry
-        
+
     Example:
         @with_retry(config=RetryConfig(max_retries=3))
         def fetch_data():
@@ -224,13 +228,13 @@ def with_retry(
 
                     # Calculate delay with exponential backoff
                     delay = min(
-                        config.initial_delay * (config.exponential_base ** attempt),
-                        config.max_delay
+                        config.initial_delay * (config.exponential_base**attempt), config.max_delay
                     )
 
                     # Add jitter to prevent thundering herd
                     if config.jitter:
                         import random
+
                         delay = delay * (0.5 + random.random() * 0.5)
 
                     total_delay += delay
@@ -243,7 +247,7 @@ def with_retry(
                         original_exception=e,
                         retry_count=attempt + 1,
                         total_delay=total_delay,
-                        context={"function": func.__name__}
+                        context={"function": func.__name__},
                     )
 
                     logger.warning(
@@ -263,6 +267,7 @@ def with_retry(
             raise RuntimeError(f"{func.__name__} failed without exception (should not happen)")
 
         return wrapper
+
     return decorator
 
 
@@ -270,11 +275,11 @@ async def with_retry_async(
     config: RetryConfig | None = None,
     retryable_exceptions: tuple = (Exception,),
     non_retryable_exceptions: tuple = (NonRetryableError,),
-    on_retry: Callable[[ErrorContext], None] | None = None
+    on_retry: Callable[[ErrorContext], None] | None = None,
 ):
     """
     Async version of with_retry decorator.
-    
+
     Example:
         @with_retry_async(config=RetryConfig(max_retries=3))
         async def fetch_data():
@@ -307,12 +312,12 @@ async def with_retry_async(
                         raise
 
                     delay = min(
-                        config.initial_delay * (config.exponential_base ** attempt),
-                        config.max_delay
+                        config.initial_delay * (config.exponential_base**attempt), config.max_delay
                     )
 
                     if config.jitter:
                         import random
+
                         delay = delay * (0.5 + random.random() * 0.5)
 
                     total_delay += delay
@@ -324,7 +329,7 @@ async def with_retry_async(
                         original_exception=e,
                         retry_count=attempt + 1,
                         total_delay=total_delay,
-                        context={"function": func.__name__}
+                        context={"function": func.__name__},
                     )
 
                     logger.warning(
@@ -342,6 +347,7 @@ async def with_retry_async(
             raise RuntimeError(f"{func.__name__} failed without exception")
 
         return wrapper
+
     return decorator
 
 
@@ -404,11 +410,11 @@ _circuit_breakers = {}
 def get_circuit_breaker(name: str, **kwargs) -> CircuitBreaker:
     """
     Get or create a circuit breaker by name.
-    
+
     Args:
         name: Circuit breaker identifier
         **kwargs: Additional arguments for CircuitBreaker constructor
-        
+
     Returns:
         CircuitBreaker instance
     """

@@ -26,6 +26,7 @@ from agents.tools import (
 # FIXTURES
 # ============================================
 
+
 @pytest.fixture
 def mock_llm_client():
     """Create a mock LLM client."""
@@ -43,7 +44,7 @@ def sample_state() -> AgentState:
         title="AI in Education",
         research_question="How does AI affect student learning outcomes?",
         max_papers=10,
-        max_iterations=2
+        max_iterations=2,
     )
 
 
@@ -59,7 +60,7 @@ def sample_papers() -> list[PaperData]:
             "url": "https://arxiv.org/abs/1234.5678",
             "source": "arXiv",
             "relevance_score": None,
-            "analysis": None
+            "analysis": None,
         },
         {
             "id": "paper_2",
@@ -69,14 +70,15 @@ def sample_papers() -> list[PaperData]:
             "url": "https://semanticscholar.org/paper/abc123",
             "source": "Semantic Scholar",
             "relevance_score": None,
-            "analysis": None
-        }
+            "analysis": None,
+        },
     ]
 
 
 # ============================================
 # STATE TESTS
 # ============================================
+
 
 class TestAgentState:
     """Tests for AgentState creation and management."""
@@ -111,22 +113,14 @@ class TestAgentResult:
 
     def test_successful_result(self):
         """Test creating a successful result."""
-        result = AgentResult(
-            success=True,
-            data={"keywords": ["test"]},
-            metadata={"count": 1}
-        )
+        result = AgentResult(success=True, data={"keywords": ["test"]}, metadata={"count": 1})
         assert result.success is True
         assert result.data == {"keywords": ["test"]}
         assert result.error is None
 
     def test_failed_result(self):
         """Test creating a failed result."""
-        result = AgentResult(
-            success=False,
-            data=None,
-            error="LLM call failed"
-        )
+        result = AgentResult(success=False, data=None, error="LLM call failed")
         assert result.success is False
         assert result.error == "LLM call failed"
 
@@ -145,6 +139,7 @@ class TestAgentResult:
 # PLANNER AGENT TESTS
 # ============================================
 
+
 class TestResearchPlannerAgent:
     """Tests for the ResearchPlannerAgent."""
 
@@ -158,18 +153,15 @@ class TestResearchPlannerAgent:
 
     def test_legacy_generate_initial_plan_success(self, mock_llm_client):
         """Legacy method should parse valid JSON response."""
-        mock_llm_client.chat.return_value = '''
+        mock_llm_client.chat.return_value = """
         {
             "keywords": ["machine learning", "education", "student performance"],
             "subtopics": ["Learning outcomes", "Implementation challenges"]
         }
-        '''
+        """
 
         planner = ResearchPlannerAgent(mock_llm_client)
-        result = planner.generate_initial_plan(
-            "How does AI affect learning?",
-            "AI in Education"
-        )
+        result = planner.generate_initial_plan("How does AI affect learning?", "AI in Education")
 
         assert "keywords" in result
         assert len(result["keywords"]) == 3
@@ -178,12 +170,12 @@ class TestResearchPlannerAgent:
 
     def test_legacy_generate_initial_plan_handles_markdown(self, mock_llm_client):
         """Legacy method should handle markdown-wrapped JSON."""
-        mock_llm_client.chat.return_value = '''```json
+        mock_llm_client.chat.return_value = """```json
         {
             "keywords": ["test1", "test2"],
             "subtopics": ["subtopic1"]
         }
-        ```'''
+        ```"""
 
         planner = ResearchPlannerAgent(mock_llm_client)
         result = planner.generate_initial_plan("Test?", "Test")
@@ -205,7 +197,7 @@ class TestResearchPlannerAgent:
 
         keywords = planner._fallback_keyword_extraction(
             "How does machine learning affect student performance in higher education?",
-            "AI in Education"
+            "AI in Education",
         )
 
         # Should extract meaningful words, excluding stopwords
@@ -219,7 +211,7 @@ class TestResearchPlannerAgent:
         """Running planner should update state with keywords and subtopics."""
         mock_llm_client.chat.side_effect = [
             '{"keywords": ["ai", "education", "learning"]}',
-            '{"subtopics": ["Benefits", "Challenges"]}'
+            '{"subtopics": ["Benefits", "Challenges"]}',
         ]
 
         planner = ResearchPlannerAgent(mock_llm_client)
@@ -233,6 +225,7 @@ class TestResearchPlannerAgent:
 # ============================================
 # ANALYZER AGENT TESTS
 # ============================================
+
 
 class TestPaperAnalyzerAgent:
     """Tests for the PaperAnalyzerAgent."""
@@ -250,17 +243,16 @@ class TestPaperAnalyzerAgent:
 
         analyzer = PaperAnalyzerAgent(mock_llm_client)
         result = analyzer.analyze_paper(
-            "Test Paper",
-            "Test abstract",
-            "Test content",
-            "Test question?"
+            "Test Paper", "Test abstract", "Test content", "Test question?"
         )
 
         assert mock_llm_client.chat.called
         assert result == '{"relevance_score": 85}'
 
     @pytest.mark.asyncio
-    async def test_analyzer_run_filters_by_relevance(self, mock_llm_client, sample_state, sample_papers):
+    async def test_analyzer_run_filters_by_relevance(
+        self, mock_llm_client, sample_state, sample_papers
+    ):
         """Analyzer should filter papers by relevance threshold."""
         # First paper: high relevance, second paper: low relevance
         mock_llm_client.chat.side_effect = [
@@ -286,6 +278,7 @@ class TestPaperAnalyzerAgent:
 # SYNTHESIZER AGENT TESTS
 # ============================================
 
+
 class TestSynthesisExecutorAgent:
     """Tests for the SynthesisExecutorAgent."""
 
@@ -302,10 +295,7 @@ class TestSynthesisExecutorAgent:
 
         synthesizer = SynthesisExecutorAgent(mock_llm_client)
         result = synthesizer.synthesize_section(
-            "AI Applications",
-            "Paper 1: ... Paper 2: ...",
-            "graduate",
-            500
+            "AI Applications", "Paper 1: ... Paper 2: ...", "graduate", 500
         )
 
         assert "synthesized" in result
@@ -316,11 +306,9 @@ class TestSynthesisExecutorAgent:
 
         sections = [
             {"subtopic": "Introduction", "content": "Intro content..."},
-            {"subtopic": "Methods", "content": "Methods content..."}
+            {"subtopic": "Methods", "content": "Methods content..."},
         ]
-        gaps = [
-            {"description": "Gap 1", "importance": "High", "directions": "Future work"}
-        ]
+        gaps = [{"description": "Gap 1", "importance": "High", "directions": "Future work"}]
 
         combined = synthesizer._combine_sections(sections, gaps, "Test Title", 5)
 
@@ -333,6 +321,7 @@ class TestSynthesisExecutorAgent:
 # ============================================
 # QUALITY CHECKER AGENT TESTS
 # ============================================
+
 
 class TestQualityCheckerAgent:
     """Tests for the QualityCheckerAgent."""
@@ -347,12 +336,14 @@ class TestQualityCheckerAgent:
     @pytest.mark.asyncio
     async def test_quality_checker_passes_good_synthesis(self, mock_llm_client, sample_state):
         """Quality checker should pass synthesis above threshold."""
-        mock_llm_client.chat.return_value = json.dumps({
-            "overall_score": 85,
-            "criteria_scores": {"coherence": 90, "coverage": 80},
-            "feedback": "Good synthesis",
-            "should_refine": False
-        })
+        mock_llm_client.chat.return_value = json.dumps(
+            {
+                "overall_score": 85,
+                "criteria_scores": {"coherence": 90, "coverage": 80},
+                "feedback": "Good synthesis",
+                "should_refine": False,
+            }
+        )
 
         sample_state["synthesis"] = "This is a comprehensive literature review..."
         sample_state["high_quality_papers"] = [{"title": "Paper 1"}]
@@ -366,12 +357,14 @@ class TestQualityCheckerAgent:
     @pytest.mark.asyncio
     async def test_quality_checker_requests_refinement(self, mock_llm_client, sample_state):
         """Quality checker should request refinement for low scores."""
-        mock_llm_client.chat.return_value = json.dumps({
-            "overall_score": 50,
-            "criteria_scores": {"coherence": 50},
-            "feedback": "Needs improvement",
-            "should_refine": True
-        })
+        mock_llm_client.chat.return_value = json.dumps(
+            {
+                "overall_score": 50,
+                "criteria_scores": {"coherence": 50},
+                "feedback": "Needs improvement",
+                "should_refine": True,
+            }
+        )
 
         sample_state["synthesis"] = "Poor synthesis..."
         sample_state["high_quality_papers"] = [{"title": "Paper 1"}]
@@ -389,6 +382,7 @@ class TestQualityCheckerAgent:
 # TOOLS TESTS
 # ============================================
 
+
 class TestAgentTools:
     """Tests for individual agent tools."""
 
@@ -397,9 +391,7 @@ class TestAgentTools:
         mock_llm_client.chat.return_value = '{"keywords": ["ai", "education", "learning"]}'
 
         result = extract_keywords_from_question(
-            mock_llm_client,
-            "How does AI affect education?",
-            "AI in Education"
+            mock_llm_client, "How does AI affect education?", "AI in Education"
         )
 
         assert result.success is True
@@ -409,11 +401,7 @@ class TestAgentTools:
         """extract_keywords should handle invalid JSON gracefully."""
         mock_llm_client.chat.return_value = "Not valid JSON"
 
-        result = extract_keywords_from_question(
-            mock_llm_client,
-            "Test?",
-            "Test"
-        )
+        result = extract_keywords_from_question(mock_llm_client, "Test?", "Test")
 
         assert result.success is False
         assert result.data == []
@@ -426,7 +414,7 @@ class TestAgentTools:
             mock_llm_client,
             "Test Paper",
             "Test abstract about AI in education",
-            "How does AI affect education?"
+            "How does AI affect education?",
         )
 
         assert result.success is True
@@ -435,18 +423,17 @@ class TestAgentTools:
 
     def test_evaluate_synthesis_quality_success(self, mock_llm_client):
         """evaluate_synthesis_quality should return quality metrics."""
-        mock_llm_client.chat.return_value = json.dumps({
-            "overall_score": 80,
-            "criteria_scores": {"coherence": 85, "coverage": 75},
-            "feedback": "Well-structured review",
-            "should_refine": False
-        })
+        mock_llm_client.chat.return_value = json.dumps(
+            {
+                "overall_score": 80,
+                "criteria_scores": {"coherence": 85, "coverage": 75},
+                "feedback": "Well-structured review",
+                "should_refine": False,
+            }
+        )
 
         result = evaluate_synthesis_quality(
-            mock_llm_client,
-            "This is a literature review...",
-            "Research question?",
-            10
+            mock_llm_client, "This is a literature review...", "Research question?", 10
         )
 
         assert result.success is True
@@ -457,6 +444,7 @@ class TestAgentTools:
 # ============================================
 # RETRIEVER AGENT TESTS
 # ============================================
+
 
 class TestPaperRetrieverAgent:
     """Tests for the PaperRetrieverAgent."""
@@ -473,9 +461,27 @@ class TestPaperRetrieverAgent:
         retriever = PaperRetrieverAgent()
 
         papers = [
-            {"title": "Paper One", "abstract": "Abstract 1", "authors": [], "url": "url1", "source": "arXiv"},
-            {"title": "Paper One", "abstract": "Abstract 1 duplicate", "authors": [], "url": "url2", "source": "SS"},
-            {"title": "Paper Two", "abstract": "Abstract 2", "authors": [], "url": "url3", "source": "arXiv"},
+            {
+                "title": "Paper One",
+                "abstract": "Abstract 1",
+                "authors": [],
+                "url": "url1",
+                "source": "arXiv",
+            },
+            {
+                "title": "Paper One",
+                "abstract": "Abstract 1 duplicate",
+                "authors": [],
+                "url": "url2",
+                "source": "SS",
+            },
+            {
+                "title": "Paper Two",
+                "abstract": "Abstract 2",
+                "authors": [],
+                "url": "url3",
+                "source": "arXiv",
+            },
         ]
 
         unique = retriever._deduplicate_papers(papers)
@@ -489,6 +495,7 @@ class TestPaperRetrieverAgent:
 # ============================================
 # INTEGRATION-STYLE TESTS
 # ============================================
+
 
 class TestAgentIntegration:
     """Integration tests for the agent pipeline."""

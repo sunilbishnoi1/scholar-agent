@@ -19,12 +19,13 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 # Configure pytest-asyncio
-pytest_plugins = ['pytest_asyncio']
+pytest_plugins = ["pytest_asyncio"]
 
 
 # ============================================
 # Session-scoped fixtures
 # ============================================
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -37,6 +38,7 @@ def event_loop():
 # ============================================
 # Database fixtures
 # ============================================
+
 
 @pytest.fixture
 def mock_db_session():
@@ -74,11 +76,12 @@ def in_memory_db():
 # LLM Client fixtures
 # ============================================
 
+
 @pytest.fixture
 def mock_llm_client():
     """
     Create a mock LLM client for testing.
-    
+
     The mock is configured to return valid JSON responses by default.
     Tests can override the return value for specific scenarios.
     """
@@ -118,7 +121,7 @@ def sample_paper_data():
         "url": "https://arxiv.org/abs/2024.12345",
         "source": "arXiv",
         "relevance_score": None,
-        "analysis": None
+        "analysis": None,
     }
 
 
@@ -135,7 +138,7 @@ def sample_papers_list(sample_paper_data):
             "url": "https://semanticscholar.org/paper/abc123",
             "source": "Semantic Scholar",
             "relevance_score": None,
-            "analysis": None
+            "analysis": None,
         },
         {
             "id": "test_paper_3",
@@ -145,8 +148,8 @@ def sample_papers_list(sample_paper_data):
             "url": "https://arxiv.org/abs/2024.67890",
             "source": "arXiv",
             "relevance_score": None,
-            "analysis": None
-        }
+            "analysis": None,
+        },
     ]
 
 
@@ -159,18 +162,18 @@ def sample_paper_analysis():
         "key_findings": [
             "Ensemble methods achieve 15% better accuracy than logistic regression",
             "Feature engineering significantly impacts model performance",
-            "Student engagement metrics are strong predictors of success"
+            "Student engagement metrics are strong predictors of success",
         ],
         "methodology": "Quantitative study using gradient boosting and random forests on a dataset of 1000 students",
         "limitations": [
             "Single institution study",
             "Limited to STEM courses",
-            "No consideration of socioeconomic factors"
+            "No consideration of socioeconomic factors",
         ],
         "contribution": "Provides a benchmark for ML-based student performance prediction",
         "key_quotes": [
             "Our results suggest that early intervention based on ML predictions could improve retention rates by up to 20%"
-        ]
+        ],
     }
 
 
@@ -208,34 +211,30 @@ def sample_synthesis():
 def mock_paper_retriever():
     """Create a mock paper retriever."""
     mock = Mock()
-    mock.search_papers = Mock(return_value=[
-        {
-            "title": "Test Paper 1",
-            "abstract": "Abstract 1",
-            "authors": ["Author 1"],
-            "url": "http://example.com/1",
-            "source": "arXiv"
-        },
-        {
-            "title": "Test Paper 2",
-            "abstract": "Abstract 2",
-            "authors": ["Author 2"],
-            "url": "http://example.com/2",
-            "source": "Semantic Scholar"
-        }
-    ])
+    mock.search_papers = Mock(
+        return_value=[
+            {
+                "title": "Test Paper 1",
+                "abstract": "Abstract 1",
+                "authors": ["Author 1"],
+                "url": "http://example.com/1",
+                "source": "arXiv",
+            },
+            {
+                "title": "Test Paper 2",
+                "abstract": "Abstract 2",
+                "authors": ["Author 2"],
+                "url": "http://example.com/2",
+                "source": "Semantic Scholar",
+            },
+        ]
+    )
     return mock
 
 
 # Markers for different test categories
 def pytest_configure(config):
     """Configure custom pytest markers."""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+    config.addinivalue_line("markers", "unit: mark test as a unit test")
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line("markers", "slow: mark test as slow running")

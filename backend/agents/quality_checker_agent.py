@@ -13,7 +13,7 @@ class QualityCheckerAgent(ToolEnabledAgent):
     - Evaluating the quality of synthesized literature review
     - Providing feedback for improvement
     - Deciding if the synthesis meets quality thresholds
-    
+
     This agent enables the iterative refinement loop in the pipeline.
     """
 
@@ -27,21 +27,21 @@ class QualityCheckerAgent(ToolEnabledAgent):
         self.register_tool(
             "evaluate_quality",
             lambda **kwargs: evaluate_synthesis_quality(self.llm_client, **kwargs),
-            "Evaluate the quality of the synthesized literature review"
+            "Evaluate the quality of the synthesized literature review",
         )
 
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the quality checker agent.
-        
+
         Workflow:
         1. Evaluate synthesis quality
         2. Provide feedback
         3. Update state with quality metrics
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             Updated state with quality assessment
         """
@@ -66,7 +66,7 @@ class QualityCheckerAgent(ToolEnabledAgent):
                 "evaluate_quality",
                 synthesis=synthesis,
                 research_question=research_question,
-                paper_count=paper_count
+                paper_count=paper_count,
             )
 
             if quality_result.success:
@@ -92,28 +92,29 @@ class QualityCheckerAgent(ToolEnabledAgent):
                             f"but max iterations reached. Completing anyway."
                         )
                     else:
-                        self.logger.info(f"Quality score {state['quality_score']:.1f} meets threshold")
+                        self.logger.info(
+                            f"Quality score {state['quality_score']:.1f} meets threshold"
+                        )
             else:
                 self.logger.error(f"Quality evaluation failed: {quality_result.error}")
                 state["quality_score"] = 0.0
                 state["quality_feedback"] = f"Evaluation failed: {quality_result.error}"
                 state["status"] = "completed"  # Don't block completion on evaluation failure
 
-            state["messages"] = [self._create_message(
-                "evaluate_quality",
-                f"Quality score: {state['quality_score']:.1f}, Status: {state['status']}"
-            )]
+            state["messages"] = [
+                self._create_message(
+                    "evaluate_quality",
+                    f"Quality score: {state['quality_score']:.1f}, Status: {state['status']}",
+                )
+            ]
 
             result = AgentResult(
                 success=True,
-                data={
-                    "quality_score": state["quality_score"],
-                    "status": state["status"]
-                },
+                data={"quality_score": state["quality_score"], "status": state["status"]},
                 metadata={
                     "iteration": state["iteration"],
-                    "max_iterations": state["max_iterations"]
-                }
+                    "max_iterations": state["max_iterations"],
+                },
             )
             self._log_complete(state, result)
 
@@ -125,16 +126,15 @@ class QualityCheckerAgent(ToolEnabledAgent):
     def should_refine(self, state: AgentState) -> bool:
         """
         Determine if the synthesis should be refined.
-        
+
         This method is used by the orchestrator for routing decisions.
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             True if refinement is needed and possible
         """
-        return (
-            state.get("status") == "needs_refinement" and
-            state.get("iteration", 0) < state.get("max_iterations", 3)
+        return state.get("status") == "needs_refinement" and state.get("iteration", 0) < state.get(
+            "max_iterations", 3
         )

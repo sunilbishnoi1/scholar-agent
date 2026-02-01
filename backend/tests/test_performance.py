@@ -14,6 +14,7 @@ import pytest
 # Performance Fixtures
 # ============================================
 
+
 @pytest.fixture
 def fast_mock_llm():
     """Create a fast mock LLM for performance testing."""
@@ -32,7 +33,7 @@ def mock_papers_batch():
             "abstract": f"This is the abstract for paper {i}. " * 20,
             "authors": ["Author A", "Author B"],
             "url": f"https://example.com/paper/{i}",
-            "source": "arXiv" if i % 2 == 0 else "Semantic Scholar"
+            "source": "arXiv" if i % 2 == 0 else "Semantic Scholar",
         }
         for i in range(100)
     ]
@@ -41,6 +42,7 @@ def mock_papers_batch():
 # ============================================
 # Latency Benchmarks
 # ============================================
+
 
 @pytest.mark.slow
 class TestLatencyBenchmarks:
@@ -59,7 +61,7 @@ class TestLatencyBenchmarks:
                 project_id="perf-test",
                 user_id="test-user",
                 title="AI in Education",
-                research_question="How does AI affect education?"
+                research_question="How does AI affect education?",
             )
             start = time.perf_counter()
             result = asyncio.get_event_loop().run_until_complete(agent.run(state))
@@ -79,21 +81,17 @@ class TestLatencyBenchmarks:
         from agents.analyzer_agent import PaperAnalyzerAgent
         from agents.state import create_initial_state
 
-        fast_mock_llm.chat.return_value = '''
+        fast_mock_llm.chat.return_value = """
         {
             "relevance_score": 85,
             "key_findings": ["Finding 1"],
             "methodology": "Test"
         }
-        '''
+        """
 
         agent = PaperAnalyzerAgent(fast_mock_llm)
 
-        paper = {
-            "id": "test-paper",
-            "title": "Test Paper",
-            "abstract": "Test abstract " * 50
-        }
+        paper = {"id": "test-paper", "title": "Test Paper", "abstract": "Test abstract " * 50}
 
         latencies = []
         for _ in range(10):
@@ -101,7 +99,7 @@ class TestLatencyBenchmarks:
                 project_id="perf-test",
                 user_id="test-user",
                 title="Test",
-                research_question="Test research question"
+                research_question="Test research question",
             )
             state["papers"] = [paper]
 
@@ -127,10 +125,7 @@ class TestLatencyBenchmarks:
             prompt = "Test prompt " * (i + 1)
 
             start = time.perf_counter()
-            decision = router.route(
-                task_type="paper_analysis",
-                prompt=prompt
-            )
+            decision = router.route(task_type="paper_analysis", prompt=prompt)
             end = time.perf_counter()
             latencies.append((end - start) * 1000)
 
@@ -148,6 +143,7 @@ class TestLatencyBenchmarks:
 # Throughput Benchmarks
 # ============================================
 
+
 @pytest.mark.slow
 class TestThroughputBenchmarks:
     """Benchmark tests for measuring system throughput."""
@@ -156,11 +152,7 @@ class TestThroughputBenchmarks:
         """Benchmark chunker throughput."""
         from rag.chunker import SemanticChunker
 
-        chunker = SemanticChunker(
-            max_chunk_size=256,
-            min_chunk_size=50,
-            overlap_size=25
-        )
+        chunker = SemanticChunker(max_chunk_size=256, min_chunk_size=50, overlap_size=25)
 
         start = time.perf_counter()
         total_chunks = 0
@@ -195,7 +187,7 @@ class TestThroughputBenchmarks:
                 "id": p["id"],
                 "content": p["abstract"],
                 "paper_id": p["id"],
-                "paper_title": p["title"]
+                "paper_title": p["title"],
             }
             for p in mock_papers_batch[:100]
         ]
@@ -226,7 +218,7 @@ class TestThroughputBenchmarks:
                 "id": p["id"],
                 "content": p["abstract"],
                 "paper_id": p["id"],
-                "paper_title": p["title"]
+                "paper_title": p["title"],
             }
             for p in mock_papers_batch[:100]
         ]
@@ -238,7 +230,7 @@ class TestThroughputBenchmarks:
             "artificial intelligence",
             "student performance",
             "education technology",
-            "deep learning"
+            "deep learning",
         ]
 
         start = time.perf_counter()
@@ -260,6 +252,7 @@ class TestThroughputBenchmarks:
 # ============================================
 # Memory Usage Tests
 # ============================================
+
 
 @pytest.mark.slow
 class TestMemoryUsage:
@@ -293,26 +286,23 @@ class TestMemoryUsage:
         from agents.state import create_initial_state
 
         state = create_initial_state(
-            project_id="test",
-            user_id="test",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="test", title="Test", research_question="Test?"
         )
 
         initial_size = sys.getsizeof(str(state))
 
         # Simulate adding content
         for i in range(100):
-            state["messages"].append({
-                "agent": "test",
-                "content": f"Message {i}",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            state["papers"].append({
-                "id": f"paper-{i}",
-                "title": f"Paper {i}",
-                "abstract": "Test " * 100
-            })
+            state["messages"].append(
+                {
+                    "agent": "test",
+                    "content": f"Message {i}",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            state["papers"].append(
+                {"id": f"paper-{i}", "title": f"Paper {i}", "abstract": "Test " * 100}
+            )
 
         final_size = sys.getsizeof(str(state))
 
@@ -332,6 +322,7 @@ class TestMemoryUsage:
 # Scalability Tests
 # ============================================
 
+
 @pytest.mark.slow
 class TestScalability:
     """Tests for system scalability."""
@@ -348,11 +339,7 @@ class TestScalability:
 
         for n_papers in [5, 10, 20]:
             papers = [
-                {
-                    "id": f"paper-{i}",
-                    "title": f"Paper {i}",
-                    "abstract": "Test abstract"
-                }
+                {"id": f"paper-{i}", "title": f"Paper {i}", "abstract": "Test abstract"}
                 for i in range(n_papers)
             ]
 
@@ -360,7 +347,7 @@ class TestScalability:
                 project_id="perf-test",
                 user_id="test-user",
                 title="Test",
-                research_question="Test question"
+                research_question="Test question",
             )
             state["papers"] = papers
 
@@ -425,6 +412,7 @@ class TestScalability:
 # Load Tests
 # ============================================
 
+
 @pytest.mark.slow
 class TestLoadHandling:
     """Tests for handling load and concurrent requests."""
@@ -439,7 +427,7 @@ class TestLoadHandling:
         mock_redis.get.return_value = None
         mock_redis.setex.return_value = True
 
-        with patch('cache.redis_cache.redis.from_url', return_value=mock_redis):
+        with patch("cache.redis_cache.redis.from_url", return_value=mock_redis):
             cache = IntelligentCache("redis://localhost:6379")
 
             start = time.perf_counter()
@@ -463,6 +451,7 @@ class TestLoadHandling:
 # ============================================
 # Regression Detection
 # ============================================
+
 
 class TestPerformanceRegression:
     """Tests to detect performance regressions."""
@@ -490,11 +479,13 @@ class TestPerformanceRegression:
         analyzer = PaperAnalyzerAgent(fast_mock_llm)
         analyzer_time = (time.perf_counter() - start) * 1000
 
-        assert planner_time < self.BASELINES["planner_init"] * 2, \
-            f"Planner init regression: {planner_time}ms (baseline: {self.BASELINES['planner_init']}ms)"
+        assert (
+            planner_time < self.BASELINES["planner_init"] * 2
+        ), f"Planner init regression: {planner_time}ms (baseline: {self.BASELINES['planner_init']}ms)"
 
-        assert analyzer_time < self.BASELINES["analyzer_init"] * 2, \
-            f"Analyzer init regression: {analyzer_time}ms (baseline: {self.BASELINES['analyzer_init']}ms)"
+        assert (
+            analyzer_time < self.BASELINES["analyzer_init"] * 2
+        ), f"Analyzer init regression: {analyzer_time}ms (baseline: {self.BASELINES['analyzer_init']}ms)"
 
     def test_state_creation_regression(self):
         """Test that state creation hasn't regressed."""
@@ -504,17 +495,15 @@ class TestPerformanceRegression:
         for _ in range(100):
             start = time.perf_counter()
             state = create_initial_state(
-                project_id="test",
-                user_id="test",
-                title="Test",
-                research_question="Test question?"
+                project_id="test", user_id="test", title="Test", research_question="Test question?"
             )
             latencies.append((time.perf_counter() - start) * 1000)
 
         avg_latency = statistics.mean(latencies)
 
-        assert avg_latency < self.BASELINES["state_creation"] * 2, \
-            f"State creation regression: {avg_latency}ms (baseline: {self.BASELINES['state_creation']}ms)"
+        assert (
+            avg_latency < self.BASELINES["state_creation"] * 2
+        ), f"State creation regression: {avg_latency}ms (baseline: {self.BASELINES['state_creation']}ms)"
 
     def test_router_decision_regression(self):
         """Test that router decision hasn't regressed."""
@@ -530,5 +519,6 @@ class TestPerformanceRegression:
 
         avg_latency = statistics.mean(latencies)
 
-        assert avg_latency < self.BASELINES["router_decision"] * 2, \
-            f"Router decision regression: {avg_latency}ms (baseline: {self.BASELINES['router_decision']}ms)"
+        assert (
+            avg_latency < self.BASELINES["router_decision"] * 2
+        ), f"Router decision regression: {avg_latency}ms (baseline: {self.BASELINES['router_decision']}ms)"

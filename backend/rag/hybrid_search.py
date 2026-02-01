@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HybridSearchResult:
     """Result from hybrid search."""
+
     chunk_id: str
     content: str
     paper_id: str
@@ -51,7 +52,7 @@ class HybridSearchResult:
 class BM25Index:
     """
     Simple BM25 implementation for keyword search.
-    
+
     BM25 (Best Matching 25) is a bag-of-words retrieval function
     that ranks documents based on query term frequency.
     """
@@ -59,7 +60,7 @@ class BM25Index:
     def __init__(self, k1: float = 1.5, b: float = 0.75):
         """
         Initialize BM25 index.
-        
+
         Args:
             k1: Term frequency saturation parameter
             b: Length normalization parameter
@@ -80,7 +81,7 @@ class BM25Index:
     def _tokenize(self, text: str) -> list[str]:
         """Simple tokenization with lowercasing and basic cleaning."""
         # Remove special characters, keep alphanumeric and spaces
-        text = re.sub(r'[^\w\s]', ' ', text.lower())
+        text = re.sub(r"[^\w\s]", " ", text.lower())
         # Split and filter empty tokens
         tokens = [t.strip() for t in text.split() if t.strip()]
         return tokens
@@ -88,7 +89,7 @@ class BM25Index:
     def add_documents(self, documents: list[dict]):
         """
         Add documents to the BM25 index.
-        
+
         Args:
             documents: List of dicts with 'content' and optional metadata
         """
@@ -133,11 +134,11 @@ class BM25Index:
     def search(self, query: str, top_k: int = 10) -> list[tuple[int, float]]:
         """
         Search the index using BM25 scoring.
-        
+
         Args:
             query: Search query
             top_k: Number of results to return
-            
+
         Returns:
             List of (doc_id, score) tuples
         """
@@ -194,7 +195,7 @@ class BM25Index:
 class HybridSearchEngine:
     """
     Hybrid search combining dense vectors and sparse keywords.
-    
+
     Features:
     - Dense vector search using Qdrant
     - Sparse keyword search using BM25
@@ -213,7 +214,7 @@ class HybridSearchEngine:
     ):
         """
         Initialize the hybrid search engine.
-        
+
         Args:
             vector_store: Vector store instance
             embedding_service: Embedding service instance
@@ -245,7 +246,7 @@ class HybridSearchEngine:
     ):
         """
         Build BM25 index for a project.
-        
+
         Args:
             project_id: Project ID
             documents: List of documents with 'content' field
@@ -259,7 +260,7 @@ class HybridSearchEngine:
     def _expand_query_hyde(self, query: str) -> str:
         """
         Expand query using HyDE (Hypothetical Document Embeddings).
-        
+
         Generates a hypothetical answer to the query and uses it
         for retrieval, which often improves recall.
         """
@@ -284,9 +285,9 @@ Brief academic paragraph:"""
                 headers={"Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 200}
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 200},
                 },
-                timeout=15
+                timeout=15,
             )
 
             if response.status_code == 200:
@@ -308,12 +309,12 @@ Brief academic paragraph:"""
     ) -> list[tuple[str, float]]:
         """
         Combine multiple ranked lists using Reciprocal Rank Fusion.
-        
+
         RRF score = sum(1 / (k + rank)) for each list
-        
+
         Args:
             ranked_lists: List of (doc_id, score) lists
-            
+
         Returns:
             Combined (doc_id, rrf_score) list sorted by score
         """
@@ -340,7 +341,7 @@ Brief academic paragraph:"""
     ) -> list[HybridSearchResult]:
         """
         Perform hybrid search combining vector and keyword search.
-        
+
         Args:
             query: Search query
             project_id: Project ID to search within
@@ -349,7 +350,7 @@ Brief academic paragraph:"""
             vector_weight: Weight for vector search in RRF
             bm25_weight: Weight for BM25 in RRF
             chunk_types: Optional filter for chunk types
-            
+
         Returns:
             List of HybridSearchResult objects
         """
@@ -367,9 +368,7 @@ Brief academic paragraph:"""
         )
 
         # Create lookup map
-        results_map: dict[str, SearchResult] = {
-            r.chunk_id: r for r in vector_results
-        }
+        results_map: dict[str, SearchResult] = {r.chunk_id: r for r in vector_results}
 
         # 2. BM25 search (if index exists)
         bm25_index = self._bm25_indexes.get(project_id)
@@ -414,24 +413,26 @@ Brief academic paragraph:"""
 
         # 4. Build hybrid results
         hybrid_results = []
-        for chunk_id, rrf_score in rrf_results[:top_k * 2]:
+        for chunk_id, rrf_score in rrf_results[: top_k * 2]:
             if chunk_id not in results_map:
                 continue
 
             result = results_map[chunk_id]
 
-            hybrid_results.append(HybridSearchResult(
-                chunk_id=chunk_id,
-                content=result.content,
-                paper_id=result.paper_id,
-                paper_title=result.paper_title,
-                chunk_type=result.chunk_type,
-                vector_score=vector_scores.get(chunk_id, 0.0),
-                bm25_score=bm25_scores.get(chunk_id, 0.0),
-                rrf_score=rrf_score,
-                final_score=rrf_score,
-                metadata=result.metadata,
-            ))
+            hybrid_results.append(
+                HybridSearchResult(
+                    chunk_id=chunk_id,
+                    content=result.content,
+                    paper_id=result.paper_id,
+                    paper_title=result.paper_title,
+                    chunk_type=result.chunk_type,
+                    vector_score=vector_scores.get(chunk_id, 0.0),
+                    bm25_score=bm25_scores.get(chunk_id, 0.0),
+                    rrf_score=rrf_score,
+                    final_score=rrf_score,
+                    metadata=result.metadata,
+                )
+            )
 
         # 5. Optional reranking
         if use_reranker and self.reranker and hybrid_results:
@@ -440,7 +441,7 @@ Brief academic paragraph:"""
                     "content": r.content,
                     "score": r.rrf_score,
                     "weight": results_map[r.chunk_id].weight if r.chunk_id in results_map else 1.0,
-                    **r.to_dict()
+                    **r.to_dict(),
                 }
                 for r in hybrid_results
             ]
@@ -471,9 +472,9 @@ Brief academic paragraph:"""
     ):
         """
         Index documents for both vector and BM25 search.
-        
+
         This should be called after ingesting papers into the vector store.
-        
+
         Args:
             project_id: Project ID
             documents: List of document dicts with content and metadata

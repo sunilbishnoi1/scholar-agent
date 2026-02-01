@@ -36,20 +36,28 @@ class ResearchPlannerAgent:
         response_str = self.llm_client.chat(prompt)
         try:
             # Clean up the response in case the LLM wraps it in markdown
-            clean_response = re.sub(r'```json\s*|\s*```', '', response_str).strip()
+            clean_response = re.sub(r"```json\s*|\s*```", "", response_str).strip()
             data = json.loads(clean_response)
 
             keywords = data.get("keywords", [])
             subtopics = data.get("subtopics", [])
 
             # Basic validation
-            if isinstance(keywords, list) and all(isinstance(k, str) for k in keywords) and \
-               isinstance(subtopics, list) and all(isinstance(s, str) for s in subtopics):
+            if (
+                isinstance(keywords, list)
+                and all(isinstance(k, str) for k in keywords)
+                and isinstance(subtopics, list)
+                and all(isinstance(s, str) for s in subtopics)
+            ):
                 return data
             else:
-                logging.warning(f"LLM returned a malformed JSON object. Fallback required. Response: {response_str}")
+                logging.warning(
+                    f"LLM returned a malformed JSON object. Fallback required. Response: {response_str}"
+                )
                 return {"keywords": [], "subtopics": []}
 
         except (json.JSONDecodeError, AttributeError) as e:
-            logging.error(f"Failed to parse JSON for initial plan, returning empty. Error: {e}. Raw response: {response_str}")
+            logging.error(
+                f"Failed to parse JSON for initial plan, returning empty. Error: {e}. Raw response: {response_str}"
+            )
             return {"keywords": [], "subtopics": []}

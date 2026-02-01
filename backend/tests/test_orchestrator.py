@@ -40,10 +40,7 @@ class TestResearchOrchestrator:
     def test_should_continue_or_end_completes_when_status_completed(self, orchestrator):
         """Routing should return 'complete' when status is completed."""
         state = create_initial_state(
-            project_id="test",
-            user_id="test",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="test", title="Test", research_question="Test?"
         )
         state["status"] = "completed"
 
@@ -58,7 +55,7 @@ class TestResearchOrchestrator:
             user_id="test",
             title="Test",
             research_question="Test?",
-            max_iterations=3
+            max_iterations=3,
         )
         state["status"] = "needs_refinement"
         state["iteration"] = 0
@@ -76,7 +73,7 @@ class TestResearchOrchestrator:
             user_id="test",
             title="Test",
             research_question="Test?",
-            max_iterations=3
+            max_iterations=3,
         )
         state["status"] = "needs_refinement"
         state["iteration"] = 3  # At max
@@ -102,6 +99,7 @@ class TestResearchOrchestrator:
 
     def test_progress_callback_handles_errors(self, mock_llm_client):
         """Progress callback errors should not crash the orchestrator."""
+
         def failing_callback(agent, message, percent):
             raise ValueError("Callback error")
 
@@ -154,7 +152,7 @@ class TestOrchestratorAgentNodes:
             project_id="test-project",
             user_id="test-user",
             title="AI in Education",
-            research_question="How does AI affect learning?"
+            research_question="How does AI affect learning?",
         )
 
     @pytest.mark.asyncio
@@ -222,20 +220,14 @@ class TestOrchestratorRun:
 
         # Mock the graph to avoid full execution
         mock_state = create_initial_state(
-            project_id="test",
-            user_id="user",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="user", title="Test", research_question="Test?"
         )
         mock_state["status"] = "completed"
         orchestrator.graph = Mock()
         orchestrator.graph.ainvoke = AsyncMock(return_value=mock_state)
 
         result = await orchestrator.run(
-            project_id="test",
-            user_id="user",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="user", title="Test", research_question="Test?"
         )
 
         assert result["project_id"] == "test"
@@ -250,10 +242,7 @@ class TestOrchestratorRun:
         orchestrator.graph.ainvoke = AsyncMock(side_effect=ValueError("Test error"))
 
         result = await orchestrator.run(
-            project_id="test",
-            user_id="user",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="user", title="Test", research_question="Test?"
         )
 
         assert result["status"] == "error"
@@ -265,20 +254,14 @@ class TestOrchestratorRun:
 
         # Mock the graph
         mock_state = create_initial_state(
-            project_id="test",
-            user_id="user",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="user", title="Test", research_question="Test?"
         )
         mock_state["status"] = "completed"
         orchestrator.graph = Mock()
         orchestrator.graph.ainvoke = AsyncMock(return_value=mock_state)
 
         result = orchestrator.run_sync(
-            project_id="test",
-            user_id="user",
-            title="Test",
-            research_question="Test?"
+            project_id="test", user_id="user", title="Test", research_question="Test?"
         )
 
         assert result["status"] == "completed"

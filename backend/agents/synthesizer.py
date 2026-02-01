@@ -1,6 +1,7 @@
 # Synthesis Executor Agent
 # Role: Combines analyzed papers into coherent literature review sections, maintains academic writing style, ensures proper citations, identifying research gaps.
 
+
 class SynthesisExecutorAgent:
     def __init__(self, llm_client):
         self.llm_client = llm_client

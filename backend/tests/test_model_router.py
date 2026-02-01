@@ -22,8 +22,7 @@ class TestSmartModelRouter:
         router = SmartModelRouter(user_budget=1.0)
 
         decision = router.route(
-            task_type="extract_keywords",
-            prompt="Extract keywords from: AI in education"
+            task_type="extract_keywords", prompt="Extract keywords from: AI in education"
         )
 
         assert decision.model == ModelTier.FAST_CHEAP
@@ -35,8 +34,7 @@ class TestSmartModelRouter:
         router = SmartModelRouter(user_budget=1.0)
 
         decision = router.route(
-            task_type="paper_analysis",
-            prompt="Analyze this paper: " + "X" * 500
+            task_type="paper_analysis", prompt="Analyze this paper: " + "X" * 500
         )
 
         assert decision.model == ModelTier.BALANCED
@@ -47,7 +45,7 @@ class TestSmartModelRouter:
 
         decision = router.route(
             task_type="research_gap_identification",
-            prompt="Identify research gaps in these 50 papers: " + "X" * 2000
+            prompt="Identify research gaps in these 50 papers: " + "X" * 2000,
         )
 
         assert decision.model == ModelTier.POWERFUL
@@ -58,10 +56,7 @@ class TestSmartModelRouter:
         router.spent = 0.009  # 90% of budget spent
 
         # Even complex task should be downgraded
-        decision = router.route(
-            task_type="synthesis",
-            prompt="Synthesize findings: " + "X" * 1000
-        )
+        decision = router.route(task_type="synthesis", prompt="Synthesize findings: " + "X" * 1000)
 
         assert decision.model == ModelTier.FAST_CHEAP
 
@@ -72,7 +67,7 @@ class TestSmartModelRouter:
         decision = router.route(
             task_type="paper_analysis",  # Normally BALANCED
             prompt="Analyze paper: " + "X" * 500,
-            complexity_hint="high"
+            complexity_hint="high",
         )
 
         # Should upgrade to POWERFUL
@@ -85,10 +80,7 @@ class TestSmartModelRouter:
         # Make multiple routing decisions
         total_estimated = 0.0
         for i in range(5):
-            decision = router.route(
-                task_type="paper_analysis",
-                prompt="Analyze paper " + "X" * 500
-            )
+            decision = router.route(task_type="paper_analysis", prompt="Analyze paper " + "X" * 500)
             router.record_usage(decision.estimated_cost)
             total_estimated += decision.estimated_cost
 
@@ -122,10 +114,7 @@ class TestSmartModelRouter:
         """Unknown task types should default to BALANCED model."""
         router = SmartModelRouter(user_budget=1.0)
 
-        decision = router.route(
-            task_type="unknown_task_type",
-            prompt="Do something: " + "X" * 300
-        )
+        decision = router.route(task_type="unknown_task_type", prompt="Do something: " + "X" * 300)
 
         assert decision.model == ModelTier.BALANCED
 
@@ -141,8 +130,7 @@ class TestSmartModelRouter:
         )
 
         decision = router.route(
-            task_type="extract_keywords",  # Normally cheap
-            prompt=long_complex_prompt
+            task_type="extract_keywords", prompt=long_complex_prompt  # Normally cheap
         )
 
         # Should upgrade from FAST_CHEAP to at least BALANCED
@@ -155,7 +143,7 @@ class TestSmartModelRouter:
         decision = router.route(
             task_type="synthesis",  # Normally POWERFUL
             prompt="Synthesize: " + "X" * 500,
-            max_latency_ms=300  # Very tight constraint
+            max_latency_ms=300,  # Very tight constraint
         )
 
         # Should downgrade to faster model
@@ -165,10 +153,7 @@ class TestSmartModelRouter:
         """Routing decision should include all required metadata."""
         router = SmartModelRouter(user_budget=1.0)
 
-        decision = router.route(
-            task_type="synthesis",
-            prompt="Test prompt"
-        )
+        decision = router.route(task_type="synthesis", prompt="Test prompt")
 
         assert hasattr(decision, "model")
         assert hasattr(decision, "reason")
@@ -224,41 +209,45 @@ class TestGetRouter:
         assert router1 is not router2
 
 
-@pytest.mark.parametrize("task_type,expected_tier", [
-    ("extract_keywords", ModelTier.FAST_CHEAP),
-    ("classify_relevance", ModelTier.FAST_CHEAP),
-    ("paper_analysis", ModelTier.BALANCED),
-    ("summarization", ModelTier.BALANCED),
-    ("synthesis", ModelTier.POWERFUL),
-    ("research_gap_identification", ModelTier.POWERFUL),
-])
+@pytest.mark.parametrize(
+    "task_type,expected_tier",
+    [
+        ("extract_keywords", ModelTier.FAST_CHEAP),
+        ("classify_relevance", ModelTier.FAST_CHEAP),
+        ("paper_analysis", ModelTier.BALANCED),
+        ("summarization", ModelTier.BALANCED),
+        ("synthesis", ModelTier.POWERFUL),
+        ("research_gap_identification", ModelTier.POWERFUL),
+    ],
+)
 def test_task_routing_rules(task_type, expected_tier):
     """Test that different task types route to correct models."""
     router = SmartModelRouter(user_budget=10.0)  # High budget
 
     decision = router.route(
-        task_type=task_type,
-        prompt="Test prompt with sufficient length: " + "X" * 200
+        task_type=task_type, prompt="Test prompt with sufficient length: " + "X" * 200
     )
 
     # With high budget, should use the expected tier
     assert decision.model == expected_tier
 
 
-@pytest.mark.parametrize("budget,spent,should_downgrade", [
-    (1.0, 0.0, False),   # No spending, no downgrade
-    (1.0, 0.5, False),   # 50% spent, no downgrade
-    (1.0, 0.9, True),    # 90% spent, downgrade
-    (1.0, 0.95, True),   # 95% spent, downgrade
-])
+@pytest.mark.parametrize(
+    "budget,spent,should_downgrade",
+    [
+        (1.0, 0.0, False),  # No spending, no downgrade
+        (1.0, 0.5, False),  # 50% spent, no downgrade
+        (1.0, 0.9, True),  # 90% spent, downgrade
+        (1.0, 0.95, True),  # 95% spent, downgrade
+    ],
+)
 def test_budget_based_downgrade(budget, spent, should_downgrade):
     """Test that budget exhaustion triggers downgrades."""
     router = SmartModelRouter(user_budget=budget)
     router.spent = spent
 
     decision = router.route(
-        task_type="synthesis",  # Normally uses POWERFUL
-        prompt="Test: " + "X" * 500
+        task_type="synthesis", prompt="Test: " + "X" * 500  # Normally uses POWERFUL
     )
 
     if should_downgrade:

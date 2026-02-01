@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(str, Enum):
     """Supported LLM providers."""
+
     GROQ = "groq"
     GEMINI = "gemini"
     OPENAI = "openai"  # For future use
@@ -38,11 +39,11 @@ _client_cache: dict[str, BaseLLMClient] = {}
 def get_default_provider() -> LLMProvider:
     """
     Get the default LLM provider.
-    
+
     Priority:
     1. Environment variable LLM_PROVIDER
     2. Global default (GROQ)
-    
+
     Returns:
         The default provider
     """
@@ -55,7 +56,7 @@ def get_default_provider() -> LLMProvider:
 def set_default_provider(provider: LLMProvider) -> None:
     """
     Set the default LLM provider.
-    
+
     Args:
         provider: The provider to use as default
     """
@@ -68,36 +69,36 @@ def get_llm_client(
     provider: LLMProvider | None = None,
     config: LLMConfig | None = None,
     force_new: bool = False,
-    **kwargs
+    **kwargs,
 ) -> BaseLLMClient:
     """
     Get an LLM client instance.
-    
+
     This is the main factory function for getting LLM clients.
     By default, it returns a cached singleton instance.
-    
+
     Args:
         provider: LLM provider to use (defaults to environment/global default)
         config: Configuration for the client
         force_new: If True, create a new instance instead of using cache
         **kwargs: Additional config options passed to LLMConfig
-        
+
     Returns:
         An LLM client instance
-        
+
     Example:
         # Use default provider (Groq by default, or from LLM_PROVIDER env var)
         client = get_llm_client()
-        
+
         # Explicitly use Groq
         client = get_llm_client(provider=LLMProvider.GROQ)
-        
+
         # With custom config
         client = get_llm_client(
             provider=LLMProvider.GROQ,
             config=LLMConfig(user_budget=2.0, user_id="user123")
         )
-        
+
         # Quick config via kwargs
         client = get_llm_client(user_budget=2.0, user_id="user123")
     """
@@ -132,10 +133,12 @@ def _create_client(provider: LLMProvider, config: LLMConfig) -> BaseLLMClient:
 
     if provider == LLMProvider.GROQ:
         from agents.llm.groq_client import GroqClient
+
         return GroqClient(config)
 
     elif provider == LLMProvider.GEMINI:
         from agents.llm.gemini import GeminiProvider
+
         return GeminiProvider(config)
 
     elif provider == LLMProvider.OPENAI:
@@ -156,7 +159,7 @@ def clear_client_cache() -> None:
 def get_available_providers() -> list[LLMProvider]:
     """
     Get list of providers that are configured and available.
-    
+
     Returns:
         List of available providers
     """
@@ -177,13 +180,13 @@ def get_available_providers() -> list[LLMProvider]:
 def get_best_available_provider() -> LLMProvider | None:
     """
     Get the best available provider based on configuration.
-    
+
     Priority:
     1. LLM_PROVIDER environment variable (if set and available)
     2. Groq (best free tier)
     3. Gemini
     4. OpenAI
-    
+
     Returns:
         Best available provider or None if none configured
     """
@@ -216,14 +219,15 @@ def get_best_available_provider() -> LLMProvider | None:
 # Backward Compatibility - GeminiClient alias
 # =============================================================================
 
+
 class GeminiClient(BaseLLMClient):
     """
     Backward-compatible GeminiClient class.
-    
+
     This is a wrapper that maintains the old GeminiClient API but uses
     the new provider architecture under the hood. It now defaults to
     using Groq (better free tier) but can be configured to use any provider.
-    
+
     For new code, use get_llm_client() instead.
     """
 
@@ -233,11 +237,11 @@ class GeminiClient(BaseLLMClient):
         user_budget: float = 1.0,
         user_id: str = "default",
         enable_router: bool = True,
-        provider: str | None = None
+        provider: str | None = None,
     ):
         """
         Initialize a backward-compatible client.
-        
+
         Args:
             api_key: API key (deprecated, use env vars instead)
             user_budget: Budget for this user session
@@ -260,10 +264,7 @@ class GeminiClient(BaseLLMClient):
 
         # Build config
         config = LLMConfig(
-            api_key=api_key,
-            user_budget=user_budget,
-            user_id=user_id,
-            enable_router=enable_router
+            api_key=api_key, user_budget=user_budget, user_id=user_id, enable_router=enable_router
         )
 
         # Get the actual client
@@ -282,7 +283,7 @@ class GeminiClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Send a chat request. Delegates to the underlying provider."""
         return self._client.chat(
@@ -290,7 +291,7 @@ class GeminiClient(BaseLLMClient):
             task_type=task_type,
             complexity_hint=complexity_hint,
             max_latency_ms=max_latency_ms,
-            **kwargs
+            **kwargs,
         )
 
     def chat_with_response(
@@ -299,7 +300,7 @@ class GeminiClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
-        **kwargs
+        **kwargs,
     ):
         """Send a chat request with full response. Delegates to the underlying provider."""
         return self._client.chat_with_response(
@@ -307,7 +308,7 @@ class GeminiClient(BaseLLMClient):
             task_type=task_type,
             complexity_hint=complexity_hint,
             max_latency_ms=max_latency_ms,
-            **kwargs
+            **kwargs,
         )
 
     def get_provider_name(self) -> str:

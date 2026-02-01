@@ -21,5 +21,6 @@ def get_db():
     finally:
         db.close()
 
+
 # Exports
 __all__ = ["SessionLocal", "engine", "get_db"]

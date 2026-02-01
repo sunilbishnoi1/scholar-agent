@@ -15,15 +15,17 @@ from models.database import User
 # Generate a secret key with: openssl rand -hex 32
 SECRET_KEY = os.environ.get("SECRET_KEY", "your_default_secret_key_here")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
 # --- Password Hashing ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
+
 # --- Pydantic Schemas ---
 class TokenData(BaseModel):
     email: str | None = None
+
 
 # --- Utility Functions ---
 def verify_password(plain_password, hashed_password):
@@ -46,6 +48,7 @@ def verify_password(plain_password, hashed_password):
         # In case an unexpected ValueError still bubbles up from backend, return False
         return False
 
+
 def get_password_hash(password):
     """Hash a password for storage.
 
@@ -62,6 +65,7 @@ def get_password_hash(password):
         # Surface predictable behavior: raise a clear error for callers
         raise ValueError("Password is too long after encoding; truncate to 72 bytes before hashing")
 
+
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
@@ -71,6 +75,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 # --- Dependency for getting current user ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):

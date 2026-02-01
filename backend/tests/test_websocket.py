@@ -14,6 +14,7 @@ class TestConnectionManager:
     def manager(self):
         """Create a ConnectionManager instance."""
         from realtime.manager import ConnectionManager
+
         return ConnectionManager()
 
     @pytest.fixture
@@ -163,10 +164,7 @@ class TestAgentEvents:
         from realtime.events import EventType, create_status_event
 
         event = create_status_event(
-            project_id="proj-123",
-            agent="analyzer",
-            status="running",
-            message="Analyzing papers..."
+            project_id="proj-123", agent="analyzer", status="running", message="Analyzing papers..."
         )
 
         assert event.type == EventType.STATUS_UPDATE
@@ -184,7 +182,7 @@ class TestAgentEvents:
             progress=75.5,
             message="Processing paper 15/20",
             current=15,
-            total=20
+            total=20,
         )
 
         assert event.type == EventType.PROGRESS_UPDATE
@@ -200,7 +198,7 @@ class TestAgentEvents:
             project_id="proj-123",
             agent="synthesizer",
             message="Generating synthesis...",
-            level="info"
+            level="info",
         )
 
         assert event.type == EventType.LOG_MESSAGE
@@ -214,7 +212,7 @@ class TestAgentEvents:
         event = create_completion_event(
             project_id="proj-123",
             success=True,
-            summary={"papers_analyzed": 20, "synthesis_words": 500}
+            summary={"papers_analyzed": 20, "synthesis_words": 500},
         )
 
         assert event.type == EventType.PROJECT_COMPLETED
@@ -226,9 +224,7 @@ class TestAgentEvents:
         from realtime.events import EventType, create_completion_event
 
         event = create_completion_event(
-            project_id="proj-123",
-            success=False,
-            error_message="API rate limit exceeded"
+            project_id="proj-123", success=False, error_message="API rate limit exceeded"
         )
 
         assert event.type == EventType.PROJECT_ERROR
@@ -243,7 +239,7 @@ class TestAgentEvents:
             agent="analyzer",
             project_id="proj-123",
             progress=50.0,
-            message="Halfway done"
+            message="Halfway done",
         )
 
         event_dict = event.to_dict()
@@ -287,7 +283,7 @@ class TestAgentProgressTracker:
         """Test starting and completing agents."""
         from realtime.events import AgentProgressTracker
 
-        with patch('realtime.events.sync_broadcast_agent_update'):
+        with patch("realtime.events.sync_broadcast_agent_update"):
             tracker = AgentProgressTracker("project-123")
 
             tracker.start_agent("planner", "Planning search strategy")
@@ -300,7 +296,7 @@ class TestAgentProgressTracker:
         """Test that logging works correctly."""
         from realtime.events import AgentProgressTracker
 
-        with patch('realtime.events.sync_broadcast_agent_update') as mock_broadcast:
+        with patch("realtime.events.sync_broadcast_agent_update") as mock_broadcast:
             tracker = AgentProgressTracker("project-123")
             tracker.current_agent = "analyzer"
 

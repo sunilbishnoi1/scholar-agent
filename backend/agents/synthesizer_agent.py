@@ -13,7 +13,7 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
     - Creating literature review sections from analyzed papers
     - Identifying research gaps
     - Maintaining academic writing style
-    
+
     This is the final agent in the main pipeline before quality checking.
     """
 
@@ -26,27 +26,27 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
         self.register_tool(
             "synthesize_section",
             lambda **kwargs: synthesize_section(self.llm_client, **kwargs),
-            "Synthesize a literature review section from analyzed papers"
+            "Synthesize a literature review section from analyzed papers",
         )
         self.register_tool(
             "identify_research_gaps",
             lambda **kwargs: identify_research_gaps(self.llm_client, **kwargs),
-            "Identify research gaps from the analyzed papers"
+            "Identify research gaps from the analyzed papers",
         )
 
     async def run(self, state: AgentState) -> AgentState:
         """
         Execute the synthesizer agent.
-        
+
         Workflow:
         1. Get high-quality papers from state
         2. For each subtopic, synthesize a section
         3. Identify research gaps
         4. Combine into final synthesis
-        
+
         Args:
             state: Current pipeline state
-            
+
         Returns:
             Updated state with synthesis
         """
@@ -67,27 +67,33 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
 
                 if not high_quality_papers:
                     state["errors"].append("No papers available for synthesis")
-                    state["synthesis"] = "Unable to generate synthesis: No papers were found or analyzed."
+                    state["synthesis"] = (
+                        "Unable to generate synthesis: No papers were found or analyzed."
+                    )
                     return state
 
             # Prepare paper analyses for synthesis
             paper_analyses = []
             for paper in high_quality_papers:
                 analysis = paper.get("analysis", {})
-                paper_analyses.append({
-                    "title": paper.get("title", "Unknown"),
-                    "key_findings": analysis.get("key_findings", []),
-                    "methodology": analysis.get("methodology", ""),
-                    "limitations": analysis.get("limitations", []),
-                    "contribution": analysis.get("contribution", ""),
-                    "relevance_score": analysis.get("relevance_score", 0)
-                })
+                paper_analyses.append(
+                    {
+                        "title": paper.get("title", "Unknown"),
+                        "key_findings": analysis.get("key_findings", []),
+                        "methodology": analysis.get("methodology", ""),
+                        "limitations": analysis.get("limitations", []),
+                        "contribution": analysis.get("contribution", ""),
+                        "relevance_score": analysis.get("relevance_score", 0),
+                    }
+                )
 
             # Synthesize sections
             synthesis_sections = []
 
             # Calculate word count per section
-            words_per_section = target_word_count // len(subtopics) if subtopics else target_word_count
+            words_per_section = (
+                target_word_count // len(subtopics) if subtopics else target_word_count
+            )
 
             for subtopic in subtopics:
                 self.logger.info(f"Synthesizing section: {subtopic}")
@@ -97,26 +103,29 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
                     subtopic=subtopic,
                     paper_analyses=paper_analyses,
                     academic_level=academic_level,
-                    word_count=words_per_section
+                    word_count=words_per_section,
                 )
 
                 if section_result.success:
-                    synthesis_sections.append({
-                        "subtopic": subtopic,
-                        "content": section_result.data
-                    })
+                    synthesis_sections.append(
+                        {"subtopic": subtopic, "content": section_result.data}
+                    )
                 else:
-                    self.logger.error(f"Failed to synthesize section '{subtopic}': {section_result.error}")
-                    synthesis_sections.append({
-                        "subtopic": subtopic,
-                        "content": f"[Section generation failed: {section_result.error}]"
-                    })
+                    self.logger.error(
+                        f"Failed to synthesize section '{subtopic}': {section_result.error}"
+                    )
+                    synthesis_sections.append(
+                        {
+                            "subtopic": subtopic,
+                            "content": f"[Section generation failed: {section_result.error}]",
+                        }
+                    )
 
             # Identify research gaps
             gaps_result = await self.invoke_tool(
                 "identify_research_gaps",
                 paper_analyses=paper_analyses,
-                research_question=state["research_question"]
+                research_question=state["research_question"],
             )
 
             research_gaps = []
@@ -125,32 +134,28 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
 
             # Combine all sections into final synthesis
             final_synthesis = self._combine_sections(
-                synthesis_sections,
-                research_gaps,
-                state["title"],
-                len(high_quality_papers)
+                synthesis_sections, research_gaps, state["title"], len(high_quality_papers)
             )
 
             # Update state
             state["synthesis"] = final_synthesis
             state["synthesis_sections"] = synthesis_sections
 
-            state["messages"] = [self._create_message(
-                "synthesize",
-                f"Generated {len(synthesis_sections)} sections with {len(research_gaps)} identified research gaps"
-            )]
+            state["messages"] = [
+                self._create_message(
+                    "synthesize",
+                    f"Generated {len(synthesis_sections)} sections with {len(research_gaps)} identified research gaps",
+                )
+            ]
 
             result = AgentResult(
                 success=True,
                 data={
                     "sections": len(synthesis_sections),
                     "research_gaps": len(research_gaps),
-                    "word_count": len(final_synthesis.split())
+                    "word_count": len(final_synthesis.split()),
                 },
-                metadata={
-                    "papers_used": len(high_quality_papers),
-                    "subtopics": subtopics
-                }
+                metadata={"papers_used": len(high_quality_papers), "subtopics": subtopics},
             )
             self._log_complete(state, result)
 
@@ -160,21 +165,17 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
             return self._handle_error(state, e)
 
     def _combine_sections(
-        self,
-        sections: list[dict],
-        research_gaps: list[dict],
-        title: str,
-        paper_count: int
+        self, sections: list[dict], research_gaps: list[dict], title: str, paper_count: int
     ) -> str:
         """
         Combine all synthesized sections into a final document.
-        
+
         Args:
             sections: List of section dictionaries with subtopic and content
             research_gaps: List of identified research gaps
             title: Project title
             paper_count: Number of papers analyzed
-            
+
         Returns:
             Combined synthesis as a string
         """
@@ -187,7 +188,7 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
         # Add each section
         for section in sections:
             parts.append(f"## {section['subtopic']}\n\n")
-            parts.append(section['content'])
+            parts.append(section["content"])
             parts.append("\n\n")
 
         # Add research gaps section if available
@@ -204,10 +205,12 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
         return "".join(parts)
 
     # Legacy method for backward compatibility
-    def synthesize_section(self, subtopic: str, paper_analyses: str, academic_level: str, word_count: int) -> str:
+    def synthesize_section(
+        self, subtopic: str, paper_analyses: str, academic_level: str, word_count: int
+    ) -> str:
         """
         Legacy method for backward compatibility with existing code.
-        
+
         Returns raw LLM response string.
         """
         prompt = f"""You are a Synthesis Executor agent specializing in academic writing and literature review generation.

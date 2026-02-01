@@ -61,7 +61,9 @@ def test_rag_pipeline():
         # Ingest papers
         print("2️⃣  Ingesting papers...")
         stats = rag.ingest_papers(papers, project_id=project_id, rebuild_bm25=True)
-        print(f"   ✓ Ingested {stats['chunks_ingested']} chunks from {stats['papers_processed']} papers")
+        print(
+            f"   ✓ Ingested {stats['chunks_ingested']} chunks from {stats['papers_processed']} papers"
+        )
         print(f"   ✓ Average: {stats['avg_chunks_per_paper']:.1f} chunks/paper\n")
 
         # Vector-only search
@@ -75,7 +77,9 @@ def test_rag_pipeline():
         )
         print(f"   ✓ Found {len(results)} results (vector-only)")
         if results:
-            print(f"   Top result: {results[0]['paper_title'][:50]}... (score: {results[0].get('score', 0):.3f})\n")
+            print(
+                f"   Top result: {results[0]['paper_title'][:50]}... (score: {results[0].get('score', 0):.3f})\n"
+            )
 
         # Hybrid search
         print("4️⃣  Testing hybrid search (vector + BM25)...")
@@ -88,7 +92,9 @@ def test_rag_pipeline():
         )
         print(f"   ✓ Found {len(results)} results (hybrid)")
         for i, r in enumerate(results[:3], 1):
-            print(f"   [{i}] {r['paper_title'][:40]}... | Score: {r.get('final_score', r.get('score', 0)):.3f}")
+            print(
+                f"   [{i}] {r['paper_title'][:40]}... | Score: {r.get('final_score', r.get('score', 0)):.3f}"
+            )
         print()
 
         # Get project stats
@@ -114,6 +120,7 @@ def test_rag_pipeline():
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

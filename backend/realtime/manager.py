@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConnectionInfo:
     """Information about a WebSocket connection."""
+
     websocket: WebSocket
     user_id: str
     connected_at: datetime
@@ -23,16 +24,16 @@ class ConnectionInfo:
 class ConnectionManager:
     """
     Manages WebSocket connections for real-time agent updates.
-    
+
     Features:
     - Per-project subscriptions
     - User authentication integration
     - Graceful disconnection handling
     - Broadcast to all subscribers of a project
-    
+
     Usage:
         manager = ConnectionManager()
-        
+
         @app.websocket("/ws/projects/{project_id}/stream")
         async def stream_updates(websocket: WebSocket, project_id: str):
             await manager.connect(websocket, user_id, project_id)
@@ -58,20 +59,15 @@ class ConnectionManager:
         self._total_connections = 0
         self._total_messages_sent = 0
 
-    async def connect(
-        self,
-        websocket: WebSocket,
-        user_id: str,
-        project_id: str
-    ) -> bool:
+    async def connect(self, websocket: WebSocket, user_id: str, project_id: str) -> bool:
         """
         Accept a WebSocket connection and subscribe to a project.
-        
+
         Args:
             websocket: The WebSocket connection
             user_id: The authenticated user's ID
             project_id: The project to subscribe to
-            
+
         Returns:
             True if connection was established successfully
         """
@@ -89,7 +85,7 @@ class ConnectionManager:
                         websocket=websocket,
                         user_id=user_id,
                         connected_at=datetime.utcnow(),
-                        project_ids={project_id}
+                        project_ids={project_id},
                     )
                     self._total_connections += 1
 
@@ -104,11 +100,14 @@ class ConnectionManager:
             )
 
             # Send connection confirmation
-            await self._send_to_websocket(websocket, {
-                "type": "connected",
-                "project_id": project_id,
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            await self._send_to_websocket(
+                websocket,
+                {
+                    "type": "connected",
+                    "project_id": project_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+            )
 
             return True
 
@@ -119,7 +118,7 @@ class ConnectionManager:
     async def disconnect(self, websocket: WebSocket):
         """
         Clean up when a WebSocket disconnects.
-        
+
         Args:
             websocket: The disconnected WebSocket
         """
@@ -169,14 +168,11 @@ class ConnectionManager:
                 self._project_connections[project_id].discard(websocket)
 
     async def broadcast_to_project(
-        self,
-        project_id: str,
-        message: dict,
-        exclude: WebSocket | None = None
+        self, project_id: str, message: dict, exclude: WebSocket | None = None
     ):
         """
         Broadcast a message to all connections subscribed to a project.
-        
+
         Args:
             project_id: The project to broadcast to
             message: The message dict to send
@@ -210,7 +206,7 @@ class ConnectionManager:
     async def send_to_user(self, user_id: str, message: dict):
         """
         Send a message to all connections for a specific user.
-        
+
         Args:
             user_id: The user to send to
             message: The message dict to send
@@ -220,9 +216,7 @@ class ConnectionManager:
 
         async with self._lock:
             connections = [
-                info.websocket
-                for info in self._connection_info.values()
-                if info.user_id == user_id
+                info.websocket for info in self._connection_info.values() if info.user_id == user_id
             ]
 
         disconnected = []
@@ -237,7 +231,7 @@ class ConnectionManager:
     async def _send_to_websocket(self, websocket: WebSocket, message: dict) -> bool:
         """
         Send a message to a specific WebSocket.
-        
+
         Returns:
             True if message was sent successfully
         """
@@ -263,7 +257,7 @@ class ConnectionManager:
             "connections_by_project": {
                 project_id: len(sockets)
                 for project_id, sockets in self._project_connections.items()
-            }
+            },
         }
 
 

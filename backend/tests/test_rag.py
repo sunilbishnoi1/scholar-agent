@@ -28,6 +28,7 @@ from rag.vector_store import AcademicVectorStore, SearchResult
 
 # ============== Fixtures ==============
 
+
 @pytest.fixture
 def sample_paper():
     """Sample paper for testing."""
@@ -94,7 +95,7 @@ def mock_embedding_service():
     def mock_embed(text):
         # Create a deterministic "embedding" from text
         hash_val = hashlib.md5(text.encode()).hexdigest()
-        return [float(int(c, 16)) / 15.0 for c in hash_val[:768 // 16]] * 16
+        return [float(int(c, 16)) / 15.0 for c in hash_val[: 768 // 16]] * 16
 
     mock.embed.side_effect = mock_embed
     mock.embed_batch.side_effect = lambda texts: [mock_embed(t) for t in texts]
@@ -109,6 +110,7 @@ def bm25_index():
 
 
 # ============== Chunker Tests ==============
+
 
 class TestSemanticChunker:
     """Tests for the semantic chunker."""
@@ -201,6 +203,7 @@ class TestSemanticChunker:
 
 # ============== BM25 Tests ==============
 
+
 class TestBM25Index:
     """Tests for BM25 keyword search."""
 
@@ -285,6 +288,7 @@ class TestBM25Index:
 
 # ============== Reranker Tests ==============
 
+
 class TestCrossEncoderReranker:
     """Tests for the cross-encoder reranker."""
 
@@ -349,18 +353,19 @@ class TestCrossEncoderReranker:
 
 # ============== Integration Tests ==============
 
+
 class TestHybridSearchIntegration:
     """Integration tests for the hybrid search pipeline."""
 
     @pytest.fixture
     def hybrid_engine(self, mock_embedding_service):
         """Create hybrid search engine with mocked dependencies."""
-        with patch('rag.hybrid_search.get_vector_store') as mock_vs:
+        with patch("rag.hybrid_search.get_vector_store") as mock_vs:
             mock_vector_store = Mock(spec=AcademicVectorStore)
             mock_vector_store.search.return_value = []
             mock_vs.return_value = mock_vector_store
 
-            with patch('rag.hybrid_search.get_embedding_service') as mock_es:
+            with patch("rag.hybrid_search.get_embedding_service") as mock_es:
                 mock_es.return_value = mock_embedding_service
 
                 engine = HybridSearchEngine(
@@ -394,6 +399,7 @@ class TestHybridSearchIntegration:
 
 
 # ============== Mock Vector Store Tests ==============
+
 
 class TestVectorStoreMocked:
     """Tests for vector store with mocked Qdrant client."""
@@ -446,6 +452,7 @@ class TestVectorStoreMocked:
 
 
 # ============== Edge Cases ==============
+
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
