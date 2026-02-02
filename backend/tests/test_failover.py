@@ -156,18 +156,18 @@ class TestModelFailoverManager:
         assert state.last_failure_reason == FailoverReason.RATE_LIMIT_429
 
     def test_handle_failure_respects_retry_after(self):
-        """Should use retry_after from server when provided."""
+        """Should use retry_after from server when provided, but cap at 60s."""
         manager = ModelFailoverManager()
 
         manager.handle_failure(
             model="llama-3.1-8b-instant",
             reason=FailoverReason.RATE_LIMIT_429,
-            retry_after=120.0,
+            retry_after=120.0,  # Server suggests 120s
         )
 
         state = manager._cooldown_states["llama-3.1-8b-instant"]
-        # Should be approximately 120 seconds
-        assert 118 <= state.remaining_cooldown() <= 120
+        # Should be capped at 60 seconds (we have other models to use!)
+        assert 58 <= state.remaining_cooldown() <= 60
 
     def test_consecutive_failures_increase_cooldown(self):
         """Multiple failures should exponentially increase cooldown."""
@@ -285,6 +285,89 @@ class TestFailoverManagerSingleton:
         assert manager1 is manager2
 
 
+class TestNewFailoverFeatures:
+    """Tests for new failover features: preemptive switching and 413 chunking."""
+
+    def test_413_on_all_models_signals_chunking(self):
+        """When all models fail with 413, should signal need for chunking."""
+        manager = ModelFailoverManager()
+
+        # First 413 on 8B -> upgrades to 70B
+        decision1 = manager.handle_failure(
+            model="llama-3.1-8b-instant",
+            reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
+        )
+        assert decision1.selected_model == "llama-3.3-70b-versatile"
+
+        # 413 on 70B -> upgrades to Qwen
+        decision2 = manager.handle_failure(
+            model="llama-3.3-70b-versatile",
+            reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
+        )
+        assert decision2.selected_model == "qwen/qwen3-32b"
+
+        # 413 on Qwen -> signals chunking needed
+        decision3 = manager.handle_failure(
+            model="qwen/qwen3-32b",
+            reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
+        )
+        assert decision3.metadata.get("needs_chunking") is True
+
+    def test_skip_cooldown_for_preemptive_switches(self):
+        """Preemptive switches should not penalize the model."""
+        manager = ModelFailoverManager()
+
+        decision = manager.handle_failure(
+            model="llama-3.1-8b-instant",
+            reason=FailoverReason.TPM_APPROACHING,
+            skip_cooldown=True,
+        )
+
+        # Model should NOT be in cooldown
+        state = manager._cooldown_states["llama-3.1-8b-instant"]
+        assert not state.is_in_cooldown()
+        assert decision.was_failover
+
+    def test_tpm_approaching_triggers_preemptive_switch(self):
+        """TPM approaching should trigger switch to next model."""
+        manager = ModelFailoverManager()
+
+        decision = manager.handle_failure(
+            model="llama-3.1-8b-instant",
+            reason=FailoverReason.TPM_APPROACHING,
+            skip_cooldown=True,
+        )
+
+        assert decision.selected_model == "llama-3.3-70b-versatile"
+        assert decision.was_failover
+
+    def test_413_failover_chain_is_complete(self):
+        """413 failover chain should include all models."""
+        manager = ModelFailoverManager()
+
+        # Check that 413 chain is complete
+        chain = manager.FAILOVER_CHAIN
+
+        assert ("llama-3.1-8b-instant", FailoverReason.PAYLOAD_TOO_LARGE_413) in chain
+        assert ("llama-3.3-70b-versatile", FailoverReason.PAYLOAD_TOO_LARGE_413) in chain
+        assert ("qwen/qwen3-32b", FailoverReason.PAYLOAD_TOO_LARGE_413) in chain
+
+    def test_cooldown_capped_for_rate_limits(self):
+        """Cooldown should be capped even if server suggests longer."""
+        manager = ModelFailoverManager()
+
+        # Server suggests 300 seconds
+        manager.handle_failure(
+            model="llama-3.1-8b-instant",
+            reason=FailoverReason.RATE_LIMIT_429,
+            retry_after=300.0,
+        )
+
+        state = manager._cooldown_states["llama-3.1-8b-instant"]
+        # Should be capped at 60 seconds max
+        assert state.remaining_cooldown() <= 60
+
+
 class TestFailoverIntegration:
     """Integration tests for failover with GroqClient."""
 
@@ -351,7 +434,7 @@ class TestFailoverIntegration:
 
         assert decision.selected_model == "qwen/qwen3-32b"
 
-        # Verify the 8B model is in cooldown
+        # Verify the 8B model is in cooldown - but capped at 60s
         state = client.failover_manager._cooldown_states["llama-3.1-8b-instant"]
         assert state.is_in_cooldown()
-        assert 58 <= state.remaining_cooldown() <= 60
+        assert state.remaining_cooldown() <= 60

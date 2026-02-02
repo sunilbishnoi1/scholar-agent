@@ -1,6 +1,9 @@
 # Groq LLM Client
 # Implementation of the BaseLLMClient for Groq's API
 # Groq offers very fast inference with generous free tier (30 RPM)
+#
+# KEY PRINCIPLE: NEVER WAIT FOR RATE LIMITS - IMMEDIATELY SWITCH MODELS
+# We have 3 models (llama-8b, llama-70b, qwen-32b) - use them all before waiting.
 
 import logging
 import os
@@ -24,6 +27,12 @@ from agents.llm.failover import FailoverReason, get_failover_manager
 from agents.llm.model_config import GROQ_MODELS, ModelTier
 
 logger = logging.getLogger(__name__)
+
+
+class PreemptiveSwitchNeeded(Exception):
+    """Raised when rate limits suggest switching models before making a request."""
+
+    pass
 
 
 class TokenBucketRateLimiter:
@@ -105,16 +114,22 @@ class TokenBucketRateLimiter:
         except:
             return 60.0  # Default to 1 minute
 
-    def wait_if_needed(self, model: str, estimated_tokens: int = 1000) -> float:
+    def wait_if_needed(self, model: str, estimated_tokens: int = 1000) -> tuple[float, bool]:
         """
-        Wait if we're close to rate limits.
+        Check if we're close to rate limits.
+
+        IMPORTANT: This method NO LONGER WAITS for rate limits.
+        Instead, it returns information so the caller can switch to another model.
+        We only wait if ALL models are rate limited.
 
         Args:
             model: The model being used
             estimated_tokens: Estimated tokens for this request
 
         Returns:
-            Time waited in seconds
+            Tuple of (wait_time_if_all_blocked, should_switch_model)
+            - wait_time: Time to wait if all models are blocked (otherwise 0)
+            - should_switch: True if we should preemptively switch to another model
         """
         with self._lock:
             limits = self.get_limits(model)
@@ -143,54 +158,36 @@ class TokenBucketRateLimiter:
             tpm_current = sum(t[1] for t in self._token_usage[model])
             rpd_current = self._daily_requests.get(model, 0)
 
-            wait_time = 0.0
+            should_switch = False
 
             # Check daily limit first
             if rpd_current >= limits["rpd"]:
-                # Daily limit reached - this is severe
                 logger.warning(
                     f"Daily request limit reached for {model} ({rpd_current}/{limits['rpd']})"
                 )
-                # Wait until next day reset, but cap at 5 minutes for now
-                wait_time = min(300, 86400 - (now - self._daily_reset))
+                should_switch = True
 
-            # Check RPM limit
+            # Check RPM limit - if at limit, switch models instead of waiting
             if rpm_current >= limits["rpm"]:
-                # Find when the oldest request will expire
-                oldest = self._request_times[model][0] if self._request_times[model] else now
-                rpm_wait = max(0, 60 - (now - oldest)) + 1  # +1 for safety
-                wait_time = max(wait_time, rpm_wait)
-                logger.info(f"RPM limit reached for {model}, waiting {rpm_wait:.1f}s")
+                logger.info(f"RPM limit reached for {model}, signaling to switch models")
+                should_switch = True
 
-            # Check TPM limit
+            # Check TPM limit - if approaching, switch models
             if tpm_current + estimated_tokens >= limits["tpm"]:
-                # Find when enough tokens will expire
-                oldest = self._token_usage[model][0][0] if self._token_usage[model] else now
-                tpm_wait = max(0, 60 - (now - oldest)) + 1
-                wait_time = max(wait_time, tpm_wait)
-                logger.info(f"TPM limit approaching for {model}, waiting {tpm_wait:.1f}s")
+                logger.info(f"TPM limit approaching for {model}, signaling to switch models")
+                should_switch = True
 
-            # Use server-reported limits if available and more restrictive
+            # Check server-reported limits
             if self._remaining_requests is not None and self._remaining_requests <= 1:
-                if self._reset_requests:
-                    wait_time = max(wait_time, self._reset_requests + 0.5)
-                    logger.info(
-                        f"Server reports low remaining requests, waiting {self._reset_requests:.1f}s"
-                    )
+                logger.info(f"Server reports low remaining requests for {model}")
+                should_switch = True
 
             if self._remaining_tokens is not None and self._remaining_tokens < estimated_tokens:
-                if self._reset_tokens:
-                    wait_time = max(wait_time, self._reset_tokens + 0.5)
-                    logger.info(
-                        f"Server reports low remaining tokens, waiting {self._reset_tokens:.1f}s"
-                    )
+                logger.info(f"Server reports low remaining tokens for {model}")
+                should_switch = True
 
-        # Do the wait outside the lock
-        if wait_time > 0:
-            logger.info(f"Rate limiter waiting {wait_time:.1f}s for {model}")
-            time.sleep(wait_time)
-
-        return wait_time
+        # Return 0 wait time - we don't wait, we switch models
+        return 0.0, should_switch
 
     def record_request(self, model: str, tokens_used: int) -> None:
         """Record a completed request for rate tracking."""
@@ -484,33 +481,78 @@ class GroqClient(BaseLLMClient):
             raise
 
     def _make_api_call_with_failover(
-        self, model: str, prompt: str, max_failover_attempts: int = 3, **kwargs
+        self, model: str, prompt: str, max_failover_attempts: int = 6, **kwargs
     ) -> tuple[dict[str, Any], str]:
         """
         Make API call with automatic failover on specific errors.
 
+        KEY PRINCIPLE: NEVER WAIT FOR RATE LIMITS - USE ANOTHER MODEL IMMEDIATELY.
+        We have 3 models, try all of them before giving up or waiting.
+
         This method handles:
+        - Preemptive rate limit switches (before hitting 429)
         - 413 Payload Too Large: Failover to model with larger context
-        - 429 Rate Limit: Failover to alternative model (Qwen)
+        - 429 Rate Limit: Immediate failover to alternative model
         - Server errors: Retry with different model
+        - Payload chunking: If all models fail with 413, reduce payload size
 
         Args:
             model: Initial model to try
             prompt: The prompt to send
-            max_failover_attempts: Maximum number of failover attempts
+            max_failover_attempts: Maximum number of failover attempts (increased to 6 for 3 models x 2)
             **kwargs: Additional arguments for the API call
 
         Returns:
             Tuple of (API response dict, model name that succeeded)
         """
         current_model = model
+        original_prompt = prompt
         attempt = 0
         last_error = None
+        tried_models = set()
+        all_models_tried_with_413 = False
 
         while attempt < max_failover_attempts:
+            tried_models.add(current_model)
+
             try:
-                result = self._make_single_api_call(current_model, prompt, **kwargs)
+                # Allow preemptive switch only if we haven't tried all models
+                allow_switch = len(tried_models) < len(self.failover_manager.MODEL_PRIORITY)
+                result = self._make_single_api_call(
+                    current_model, prompt, allow_preemptive_switch=allow_switch, **kwargs
+                )
                 return result, current_model
+
+            except PreemptiveSwitchNeeded:
+                # Rate limits approaching - switch to another model immediately
+                failover = self.failover_manager.handle_failure(
+                    model=current_model,
+                    reason=FailoverReason.TPM_APPROACHING,
+                    skip_cooldown=True,  # Don't penalize for preemptive switch
+                )
+                if (
+                    failover.selected_model != current_model
+                    and failover.selected_model not in tried_models
+                ):
+                    logger.info(
+                        f"Preemptive switch: {current_model} -> {failover.selected_model} "
+                        f"(rate limits approaching)"
+                    )
+                    current_model = failover.selected_model
+                    attempt += 1
+                    continue
+                else:
+                    # All models at rate limit - try current one anyway (might work)
+                    logger.warning(f"All models at rate limits, trying {current_model} anyway")
+                    try:
+                        result = self._make_single_api_call(
+                            current_model, prompt, allow_preemptive_switch=False, **kwargs
+                        )
+                        return result, current_model
+                    except Exception as inner_e:
+                        last_error = inner_e
+                        attempt += 1
+                        continue
 
             except NonRetryableError as e:
                 # Check if this is a failover-able error
@@ -520,6 +562,31 @@ class GroqClient(BaseLLMClient):
                         model=current_model,
                         reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
                     )
+
+                    # Check if we need to chunk/reduce payload
+                    if failover.metadata.get("needs_chunking"):
+                        if not all_models_tried_with_413:
+                            # Try reducing the prompt first
+                            reduced_prompt = self._reduce_prompt_size(original_prompt)
+                            if len(reduced_prompt) < len(prompt):
+                                logger.warning(
+                                    f"All models failed with 413, reducing prompt from "
+                                    f"~{len(prompt)//4} to ~{len(reduced_prompt)//4} tokens"
+                                )
+                                prompt = reduced_prompt
+                                # Reset and try all models again with smaller prompt
+                                tried_models.clear()
+                                current_model = model  # Start with original model
+                                all_models_tried_with_413 = True
+                                attempt += 1
+                                continue
+                            else:
+                                # Can't reduce further - raise the error
+                                raise
+                        else:
+                            # Already tried reducing - raise the error
+                            raise
+
                     if failover.selected_model != current_model:
                         logger.info(
                             f"413 error on {current_model}, failing over to {failover.selected_model}"
@@ -605,15 +672,36 @@ class GroqClient(BaseLLMClient):
             f"Failed to get response after {max_failover_attempts} failover attempts"
         )
 
-    def _make_single_api_call(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
-        """Make a single API call with rate limiting but no failover."""
+    def _make_single_api_call(
+        self, model: str, prompt: str, allow_preemptive_switch: bool = True, **kwargs
+    ) -> dict[str, Any]:
+        """
+        Make a single API call with rate limit checking but no failover.
+
+        Args:
+            model: Model to use
+            prompt: The prompt to send
+            allow_preemptive_switch: If True, raise special exception to switch models preemptively
+
+        Returns:
+            API response dict
+
+        Raises:
+            PreemptiveSwitchNeeded: If rate limits suggest switching models
+        """
 
         # Estimate tokens for rate limiting
         max_response_tokens = min(kwargs.get("max_tokens", 1024), 1024)
         estimated_tokens = len(prompt) // 4 + max_response_tokens
 
-        # Wait if needed to respect rate limits BEFORE making the request
-        self.rate_limiter.wait_if_needed(model, estimated_tokens)
+        # Check rate limits - DON'T WAIT, just check if we should switch
+        _, should_switch = self.rate_limiter.wait_if_needed(model, estimated_tokens)
+
+        if should_switch and allow_preemptive_switch:
+            # Signal to failover manager that we should preemptively switch
+            raise PreemptiveSwitchNeeded(
+                f"Rate limits approaching for {model}, preemptively switching"
+            )
 
         # Make the actual API call (with circuit breaker)
         result = self.circuit_breaker.call(self._do_api_request, model, prompt, **kwargs)
@@ -623,6 +711,84 @@ class GroqClient(BaseLLMClient):
         self.rate_limiter.record_request(model, total_tokens)
 
         return result
+
+    def _reduce_prompt_size(self, prompt: str, target_reduction: float = 0.5) -> str:
+        """
+        Reduce prompt size intelligently when facing 413 errors.
+
+        Strategy:
+        1. Try to identify and truncate the data/content section while keeping instructions
+        2. Summarize long sections instead of just cutting them off
+        3. Keep the most important parts (beginning and end) of long content
+
+        Args:
+            prompt: Original prompt
+            target_reduction: Target reduction ratio (0.5 = reduce to 50%)
+
+        Returns:
+            Reduced prompt
+        """
+        original_length = len(prompt)
+        target_length = int(original_length * target_reduction)
+
+        # If prompt is small enough, return as-is
+        if original_length <= 20000:  # ~5000 tokens
+            return prompt
+
+        logger.info(
+            f"Reducing prompt from ~{original_length//4} tokens " f"to ~{target_length//4} tokens"
+        )
+
+        # Try to find patterns that indicate data sections
+        # Common patterns: "Papers:", "Analyses:", "Content:", etc.
+        data_markers = [
+            "\n\nAnalyzed Papers:",
+            "\nPapers:",
+            "\nContent:",
+            "\nData:",
+            "---\n\n",
+            "\n\n---",
+        ]
+
+        # Find where the main content/data starts
+        split_point = -1
+        for marker in data_markers:
+            pos = prompt.find(marker)
+            if pos > 0:
+                split_point = pos
+                break
+
+        if split_point > 0:
+            # Split into instructions and data
+            instructions = prompt[:split_point]
+            data = prompt[split_point:]
+
+            # Calculate how much data we can keep
+            available_for_data = target_length - len(instructions) - 200  # 200 for safety margin
+
+            if available_for_data > 0:
+                # Keep beginning and end of data, add truncation notice
+                keep_start = available_for_data // 2
+                keep_end = available_for_data // 2
+
+                truncated_data = (
+                    data[:keep_start]
+                    + "\n\n[... Content truncated to fit token limits. "
+                    + f"Removed ~{(len(data) - available_for_data)//4} tokens ...]\n\n"
+                    + data[-keep_end:]
+                )
+
+                return instructions + truncated_data
+
+        # Fallback: simple truncation from the middle
+        keep_start = target_length // 2
+        keep_end = target_length // 2
+
+        return (
+            prompt[:keep_start]
+            + "\n\n[... Content truncated to fit token limits ...]\n\n"
+            + prompt[-keep_end:]
+        )
 
     def _extract_retry_after(self, error_message: str) -> float | None:
         """Extract retry-after value from error message."""

@@ -759,12 +759,19 @@ def run_literature_review(self, project_id: str, max_papers: int):
 
         subtopic = project.subtopics[0] if project.subtopics else "Comprehensive Literature Review"
 
-        synthesizer_response = synthesizer.synthesize_section(
-            subtopic=subtopic,
-            paper_analyses="\n\n---\n\n".join(paper_analyses),
-            academic_level="graduate",
-            word_count=500,
-        )
+        # Try synthesis with graceful degradation
+        try:
+            synthesizer_response = synthesizer.synthesize_section(
+                subtopic=subtopic,
+                paper_analyses="\n\n---\n\n".join(paper_analyses),
+                academic_level="graduate",
+                word_count=500,
+            )
+        except Exception as synth_error:
+            # If synthesis fails, create a basic summary from what we have
+            logging.error(f"Synthesis failed: {synth_error}. Creating basic summary.")
+            synthesizer_response = _create_fallback_synthesis(subtopic, paper_analyses)
+
         synthesizer_plan = AgentPlan(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -804,13 +811,99 @@ def run_literature_review(self, project_id: str, max_papers: int):
             f"An error occurred during literature review for project {project_id}: {e}",
             exc_info=True,
         )
-        project_to_update = (
-            db.query(ResearchProject).filter(ResearchProject.id == project_id).first()
-        )
-        if project_to_update:
-            project_to_update.status = "error"
-            db.commit()
-        db.rollback()
+        # Try to complete with partial results instead of failing completely
+        try:
+            project_to_update = (
+                db.query(ResearchProject).filter(ResearchProject.id == project_id).first()
+            )
+            if project_to_update and paper_analyses:
+                # We have some analyses - try to complete with what we have
+                logging.info(
+                    f"Attempting to complete project {project_id} with partial results "
+                    f"({len(paper_analyses)} papers)"
+                )
+                project_to_update.status = "completed_partial"
+                fallback_response = _create_fallback_synthesis(
+                    (
+                        project_to_update.subtopics[0]
+                        if project_to_update.subtopics
+                        else "Literature Review"
+                    ),
+                    paper_analyses,
+                )
+                synthesizer_plan = AgentPlan(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    agent_type="synthesizer",
+                    plan_steps=[
+                        {
+                            "step": "synthesize_section",
+                            "status": "partial",
+                            "output": {"response": fallback_response, "error": str(e)},
+                        }
+                    ],
+                    current_step=1,
+                    plan_metadata={"partial_completion": True, "error": str(e)},
+                )
+                db.add(synthesizer_plan)
+                db.commit()
+                return {
+                    "status": "completed_partial",
+                    "papers_analyzed": len(paper_analyses),
+                    "error": str(e),
+                }
+            elif project_to_update:
+                project_to_update.status = "error"
+                db.commit()
+        except Exception as recovery_error:
+            logging.error(f"Recovery also failed: {recovery_error}")
+            db.rollback()
         raise
     finally:
         db.close()
+
+
+def _create_fallback_synthesis(subtopic: str, paper_analyses: list[str]) -> str:
+    """
+    Create a basic synthesis when LLM-based synthesis fails.
+
+    This ensures we NEVER fail to produce some output for the user.
+    """
+    synthesis_parts = [
+        f"# Literature Review: {subtopic}\n\n",
+        "## Overview\n\n",
+        f"This literature review covers {len(paper_analyses)} papers on the topic of {subtopic}. ",
+        "Due to processing constraints, this is a condensed summary of the research findings.\n\n",
+        "## Key Papers Analyzed\n\n",
+    ]
+
+    # Extract titles and key points from analyses
+    for i, analysis in enumerate(paper_analyses[:10], 1):  # Limit to first 10
+        # Try to extract title from analysis
+        lines = analysis.split("\n")
+        title = f"Paper {i}"
+        for line in lines[:5]:  # Check first 5 lines
+            if "title" in line.lower() or line.startswith("#"):
+                title = line.replace("#", "").replace("Title:", "").strip()[:100]
+                break
+
+        synthesis_parts.append(f"### {title}\n\n")
+
+        # Get first few meaningful lines as summary
+        content_lines = [line for line in lines if line.strip() and not line.startswith("#")][:3]
+        if content_lines:
+            synthesis_parts.append(" ".join(content_lines)[:500] + "...\n\n")
+
+    if len(paper_analyses) > 10:
+        synthesis_parts.append(
+            f"\n*Note: {len(paper_analyses) - 10} additional papers were analyzed "
+            "but not included in this summary due to length constraints.*\n\n"
+        )
+
+    synthesis_parts.append(
+        "\n## Conclusion\n\n"
+        "This review provides an overview of the current research landscape. "
+        "For a more detailed analysis, please review the individual paper analyses above."
+    )
+
+    return "".join(synthesis_parts)
