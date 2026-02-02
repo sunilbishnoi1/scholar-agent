@@ -1,5 +1,6 @@
 # Auto-merge develop to main after all tests pass
-# This workflow ensures that only validated code reaches production
+# This workflow creates a PR and uses GitHub's auto-merge feature
+# to respect branch protection rules on main
 
 name: Auto Merge to Main
 
@@ -13,7 +14,7 @@ on:
 
 jobs:
   auto-merge:
-    name: Merge develop to main
+    name: Create PR and Auto-Merge to main
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
     permissions:
@@ -26,11 +27,6 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Wait for CI to complete (if triggered by push)
         if: github.event_name == 'push'
@@ -87,30 +83,58 @@ jobs:
             echo "CI_PASSED=false" >> $GITHUB_ENV
           fi
 
-      - name: Merge develop to main
+      - name: Create or Update PR and Merge
         if: env.CI_PASSED == 'true'
         run: |
-          echo "Fetching latest changes..."
-          git fetch origin develop
-          git fetch origin main
+          echo "Checking for existing PR from develop to main..."
 
-          echo "Checking out main..."
-          git checkout main
-          git pull origin main
+          # Check if a PR already exists
+          EXISTING_PR=$(gh pr list --base main --head develop --json number,state --jq '.[] | select(.state == "OPEN") | .number')
 
-          echo "Merging develop into main..."
-          if git merge origin/develop --no-ff -m "Auto-merge develop to main after successful CI"; then
-            echo "✅ Merge successful!"
-            
-            echo "Pushing to main..."
-            git push origin main
-            
-            echo "✅ Successfully merged and pushed to main!"
-            echo "🚀 Production deployment will now trigger via CI/CD Pipeline"
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Found existing PR #$EXISTING_PR"
+            PR_NUMBER=$EXISTING_PR
           else
-            echo "❌ Merge conflict detected. Manual resolution required."
-            exit 1
+            echo "Creating new PR from develop to main..."
+            PR_URL=$(gh pr create \
+              --base main \
+              --head develop \
+              --title "Auto-merge: develop → main (CI passed)" \
+              --body "## Automated PR
+
+          This PR was automatically created after all CI/CD checks passed on the \`develop\` branch.
+
+          **Commit:** ${{ github.sha }}
+          **Triggered by:** ${{ github.event_name }}
+
+          ---
+          *This PR will be automatically merged if all branch protection requirements are met.*")
+            
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+            echo "Created PR #$PR_NUMBER"
           fi
+
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+
+          # Wait a moment for PR to be fully created
+          sleep 5
+
+          # Try to merge the PR
+          echo "Attempting to merge PR #$PR_NUMBER..."
+          if gh pr merge "$PR_NUMBER" --merge --auto; then
+            echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
+          else
+            # If auto-merge fails (e.g., not enabled in repo), try direct merge
+            echo "Auto-merge not available, attempting direct merge..."
+            if gh pr merge "$PR_NUMBER" --merge; then
+              echo "✅ PR #$PR_NUMBER merged successfully!"
+            else
+              echo "⚠️ Could not merge PR automatically. PR #$PR_NUMBER is ready for manual review."
+              echo "PR_READY=true" >> $GITHUB_ENV
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Report failure
         if: env.CI_PASSED != 'true'
