@@ -1,0 +1,156 @@
+# Auto-merge develop to main after all tests pass
+# This workflow creates a PR and uses GitHub's auto-merge feature
+# to respect branch protection rules on main
+
+name: Auto Merge to Main
+
+on:
+  push:
+    branches: [develop]
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    branches: [develop]
+    types: [completed]
+
+jobs:
+  auto-merge:
+    name: Create PR and Auto-Merge to main
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for CI to complete (if triggered by push)
+        if: github.event_name == 'push'
+        run: |
+          echo "Waiting for CI/CD Pipeline to complete..."
+          sleep 30
+
+          # Get the current commit SHA
+          COMMIT_SHA="${{ github.sha }}"
+
+          # Wait for CI to complete (max 20 minutes)
+          for i in {1..40}; do
+            # Get all workflow runs for this commit
+            RUNS=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${{ github.repository }}/actions/runs?head_sha=$COMMIT_SHA&event=push")
+            
+            # Check if CI/CD Pipeline completed
+            STATUS=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.name == "CI/CD Pipeline") | .status')
+            CONCLUSION=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.name == "CI/CD Pipeline") | .conclusion')
+            
+            echo "CI Status: $STATUS, Conclusion: $CONCLUSION"
+            
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "✅ CI/CD Pipeline passed!"
+                echo "CI_PASSED=true" >> $GITHUB_ENV
+                break
+              else
+                echo "❌ CI/CD Pipeline failed with conclusion: $CONCLUSION"
+                echo "CI_PASSED=false" >> $GITHUB_ENV
+                break
+              fi
+            fi
+            
+            echo "Waiting for CI/CD Pipeline... ($i/40)"
+            sleep 30
+          done
+
+          if [ -z "$STATUS" ] || [ "$STATUS" != "completed" ]; then
+            echo "⏱️ CI/CD Pipeline did not complete in time"
+            echo "CI_PASSED=false" >> $GITHUB_ENV
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set CI status from workflow_run
+        if: github.event_name == 'workflow_run'
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+            echo "CI_PASSED=true" >> $GITHUB_ENV
+          else
+            echo "CI_PASSED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create or Update PR and Merge
+        if: env.CI_PASSED == 'true'
+        run: |
+          echo "Checking for existing PR from develop to main..."
+
+          # Check if a PR already exists
+          EXISTING_PR=$(gh pr list --base main --head develop --json number,state --jq '.[] | select(.state == "OPEN") | .number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Found existing PR #$EXISTING_PR"
+            PR_NUMBER=$EXISTING_PR
+          else
+            echo "Creating new PR from develop to main..."
+            PR_URL=$(gh pr create \
+              --base main \
+              --head develop \
+              --title "Auto-merge: develop → main (CI passed)" \
+              --body "## Automated PR
+
+          This PR was automatically created after all CI/CD checks passed on the \`develop\` branch.
+
+          **Commit:** ${{ github.sha }}
+          **Triggered by:** ${{ github.event_name }}
+
+          ---
+          *This PR will be automatically merged if all branch protection requirements are met.*")
+            
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+            echo "Created PR #$PR_NUMBER"
+          fi
+
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+
+          # Wait a moment for PR to be fully created
+          sleep 5
+
+          # Try to merge the PR
+          echo "Attempting to merge PR #$PR_NUMBER..."
+          if gh pr merge "$PR_NUMBER" --merge --auto; then
+            echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
+          else
+            # If auto-merge fails (e.g., not enabled in repo), try direct merge
+            echo "Auto-merge not available, attempting direct merge..."
+            if gh pr merge "$PR_NUMBER" --merge; then
+              echo "✅ PR #$PR_NUMBER merged successfully!"
+            else
+              echo "⚠️ Could not merge PR automatically. PR #$PR_NUMBER is ready for manual review."
+              echo "PR_READY=true" >> $GITHUB_ENV
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report failure
+        if: env.CI_PASSED != 'true'
+        run: |
+          echo "❌ Cannot merge to main: CI/CD Pipeline did not pass"
+          echo "Please check the CI/CD Pipeline results and fix any issues"
+          exit 1
+
+      - name: Comment on commit (on failure)
+        if: failure()
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/commits/${{ github.sha }}/comments \
+            -f body="❌ Auto-merge to main failed. Please check the workflow logs for details."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

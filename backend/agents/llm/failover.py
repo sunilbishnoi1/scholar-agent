@@ -1,6 +1,9 @@
 # Model Failover Manager
 # Handles dynamic model switching when primary models fail due to rate limits or payload issues
 # Production-grade failover system for Groq models
+#
+# KEY PRINCIPLE: NEVER WAIT FOR RATE LIMITS - IMMEDIATELY USE ANOTHER MODEL
+# We have 3 models available, use them all before waiting.
 
 import logging
 import threading
@@ -23,6 +26,7 @@ class FailoverReason(str, Enum):
     SERVER_ERROR = "server_error"  # 5xx errors
     TIMEOUT = "timeout"  # Request timeout
     COOLDOWN = "cooldown"  # Model in cooldown period
+    TPM_APPROACHING = "tpm_approaching"  # TPM limit approaching (preemptive switch)
 
 
 @dataclass
@@ -79,15 +83,23 @@ class ModelFailoverManager:
 
     # Failover chains: what model to use when the primary fails
     # Key: (original_model, failure_reason) -> fallback_model
+    # EXTENDED: Now includes 413 failover for ALL models, including Qwen
     FAILOVER_CHAIN = {
-        # 413 Payload Too Large: upgrade to larger model
+        # 413 Payload Too Large: upgrade to larger model OR try smaller chunks
         ("llama-3.1-8b-instant", FailoverReason.PAYLOAD_TOO_LARGE_413): "llama-3.3-70b-versatile",
-        # 429 Rate Limit: switch to different model family
+        ("llama-3.3-70b-versatile", FailoverReason.PAYLOAD_TOO_LARGE_413): "qwen/qwen3-32b",
+        ("qwen/qwen3-32b", FailoverReason.PAYLOAD_TOO_LARGE_413): None,  # Signal to chunk/reduce
+        # 429 Rate Limit: switch to different model family immediately
         ("llama-3.1-8b-instant", FailoverReason.RATE_LIMIT_429): "qwen/qwen3-32b",
         ("llama-3.3-70b-versatile", FailoverReason.RATE_LIMIT_429): "qwen/qwen3-32b",
-        ("qwen/qwen3-32b", FailoverReason.RATE_LIMIT_429): "llama-3.1-8b-instant",  # Try to go back
+        ("qwen/qwen3-32b", FailoverReason.RATE_LIMIT_429): "llama-3.1-8b-instant",
+        # TPM approaching - preemptive switch to avoid hitting limits
+        ("llama-3.1-8b-instant", FailoverReason.TPM_APPROACHING): "llama-3.3-70b-versatile",
+        ("llama-3.3-70b-versatile", FailoverReason.TPM_APPROACHING): "qwen/qwen3-32b",
+        ("qwen/qwen3-32b", FailoverReason.TPM_APPROACHING): "llama-3.1-8b-instant",
         # Context length issues: upgrade to larger context model
         ("llama-3.1-8b-instant", FailoverReason.CONTEXT_LENGTH): "llama-3.3-70b-versatile",
+        ("qwen/qwen3-32b", FailoverReason.CONTEXT_LENGTH): "llama-3.3-70b-versatile",
         # Server errors: try different model
         ("llama-3.1-8b-instant", FailoverReason.SERVER_ERROR): "qwen/qwen3-32b",
         ("llama-3.3-70b-versatile", FailoverReason.SERVER_ERROR): "qwen/qwen3-32b",
@@ -204,17 +216,23 @@ class ModelFailoverManager:
         model: str,
         reason: FailoverReason,
         retry_after: float | None = None,
+        skip_cooldown: bool = False,
     ) -> FailoverDecision:
         """
         Handle a model failure and determine the next model to use.
+
+        IMPORTANT: For rate limits and 413 errors, we immediately switch models
+        without waiting. We only wait if ALL THREE models are unavailable.
 
         Args:
             model: The model that failed
             reason: Reason for failure
             retry_after: Server-suggested retry time (from headers)
+            skip_cooldown: If True, don't put model in cooldown (for preemptive switches)
 
         Returns:
-            FailoverDecision with the fallback model to use
+            FailoverDecision with the fallback model to use.
+            If metadata contains 'needs_chunking': True, the caller should reduce payload size.
         """
         with self._lock:
             # Update cooldown state for failed model
@@ -227,18 +245,22 @@ class ModelFailoverManager:
             state.last_failure_reason = reason
             state.last_failure_time = time.time()
 
-            # Calculate cooldown duration
-            if retry_after and retry_after > 0:
-                cooldown_duration = retry_after
+            # Calculate cooldown duration - shorter for rate limits since we have alternatives
+            if skip_cooldown:
+                cooldown_duration = 0.0
+            elif retry_after and retry_after > 0:
+                # Use server suggestion but cap it - we have other models!
+                cooldown_duration = min(retry_after, 60.0)
             else:
-                # Exponential backoff based on consecutive failures
+                # Shorter exponential backoff - we want to try other models quickly
                 cooldown_duration = min(
                     self.BASE_COOLDOWN
                     * (self.COOLDOWN_MULTIPLIER ** (state.consecutive_failures - 1)),
                     self.MAX_COOLDOWN,
                 )
 
-            state.cooldown_until = time.time() + cooldown_duration
+            if not skip_cooldown:
+                state.cooldown_until = time.time() + cooldown_duration
 
             logger.warning(
                 f"Model {model} failed ({reason.value}). "
@@ -249,6 +271,24 @@ class ModelFailoverManager:
             # Determine fallback model
             fallback_key = (model, reason)
             fallback_model = self.FAILOVER_CHAIN.get(fallback_key)
+
+            # Special case: 413 on all models means we need to chunk the payload
+            if fallback_model is None and reason == FailoverReason.PAYLOAD_TOO_LARGE_413:
+                logger.warning(
+                    "All models failed with 413 for this payload. "
+                    "Signaling to reduce payload size."
+                )
+                return FailoverDecision(
+                    original_model=model,
+                    selected_model=model,  # Return same model - caller will reduce size
+                    reason="All models failed with 413 - need to reduce payload",
+                    was_failover=False,
+                    cooldown_remaining=0,
+                    metadata={
+                        "needs_chunking": True,
+                        "failure_reason": reason.value,
+                    },
+                )
 
             if fallback_model:
                 # Check if fallback is available
