@@ -38,7 +38,7 @@ jobs:
           COMMIT_SHA="${{ github.sha }}"
 
           # Wait for CI to complete (max 20 minutes)
-          for i in {1..40}; do
+          for i in {1..45}; do
             # Get all workflow runs for this commit
             RUNS=$(gh api \
               -H "Accept: application/vnd.github+json" \
@@ -63,7 +63,7 @@ jobs:
               fi
             fi
             
-            echo "Waiting for CI/CD Pipeline... ($i/40)"
+            echo "Waiting for CI/CD Pipeline... ($i/45)"
             sleep 30
           done
 
