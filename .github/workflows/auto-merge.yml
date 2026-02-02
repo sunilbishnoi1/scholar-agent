@@ -16,6 +16,9 @@ jobs:
     name: Merge develop to main
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
