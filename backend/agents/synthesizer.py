@@ -30,7 +30,14 @@ class SynthesisExecutorAgent:
         """Estimate token count (roughly 4 chars per token for English)."""
         return len(text) // 4
 
-    def synthesize_section(self, subtopic, paper_analyses, academic_level, word_count):
+    def synthesize_section(
+        self,
+        subtopic,
+        paper_analyses,
+        academic_level,
+        word_count,
+        is_final_synthesis: bool = False,
+    ):
         """
         Synthesize a literature review section from analyzed papers.
 
@@ -39,6 +46,9 @@ class SynthesisExecutorAgent:
         2. If paper_analyses fits in one call (~4K tokens), do single synthesis
         3. If too large, split into chunks, synthesize each, then combine
         4. If a single chunk still fails, summarize it first
+
+        For final synthesis (is_final_synthesis=True), we wait for a powerful model
+        to ensure high-quality output rather than using degraded fallbacks.
 
         This ensures we NEVER fail the project due to payload size (413 errors).
         """
@@ -55,20 +65,34 @@ class SynthesisExecutorAgent:
         if total_length <= MAX_SYNTHESIS_CHARS and estimated_tokens <= MAX_REQUEST_TOKENS:
             # Small enough for single synthesis
             logger.info("Input size OK for single synthesis")
-            return self._single_synthesis(subtopic, paper_analyses, academic_level, word_count)
+            return self._single_synthesis(
+                subtopic, paper_analyses, academic_level, word_count, is_final_synthesis
+            )
         else:
             # Need to chunk and synthesize in multiple passes
             logger.info(
                 f"Paper analyses too large ({total_length} chars / ~{estimated_tokens} tokens), "
                 f"using chunked synthesis approach (limit: {MAX_REQUEST_TOKENS} tokens/request)"
             )
-            return self._chunked_synthesis(subtopic, paper_analyses, academic_level, word_count)
+            return self._chunked_synthesis(
+                subtopic, paper_analyses, academic_level, word_count, is_final_synthesis
+            )
 
-    def _single_synthesis(self, subtopic, paper_analyses, academic_level, word_count):
+    def _single_synthesis(
+        self,
+        subtopic,
+        paper_analyses,
+        academic_level,
+        word_count,
+        is_final_synthesis: bool = False,
+    ):
         """
         Perform single-pass synthesis for smaller inputs.
 
         If payload is still too large (413 error), iteratively reduce until it works.
+
+        Args:
+            is_final_synthesis: If True, use critical_priority to wait for powerful model
         """
         # Build prompt and validate token count BEFORE sending
         base_prompt = f"""You are a Synthesis Executor agent specializing in academic writing and literature review generation.
@@ -113,8 +137,10 @@ class SynthesisExecutorAgent:
                 logger.info(
                     f"Synthesis attempt {attempt + 1}/{max_attempts}: "
                     f"~{self._estimate_tokens(prompt)} tokens"
+                    f"{' (critical priority)' if is_final_synthesis else ''}"
                 )
-                return self.llm_client.chat(prompt)
+                # Use critical_priority for final synthesis to wait for powerful model
+                return self.llm_client.chat(prompt, critical_priority=is_final_synthesis)
             except Exception as e:
                 error_str = str(e).lower()
                 if "413" in str(e) or "payload" in error_str or "too large" in error_str:
@@ -134,15 +160,19 @@ class SynthesisExecutorAgent:
                             "All synthesis attempts failed, falling back to summary approach"
                         )
                         return self._synthesize_with_summary(
-                            subtopic, paper_analyses, academic_level, word_count
+                            subtopic, paper_analyses, academic_level, word_count, is_final_synthesis
                         )
                 else:
                     raise
 
         # Should not reach here, but just in case
-        return self._synthesize_with_summary(subtopic, paper_analyses, academic_level, word_count)
+        return self._synthesize_with_summary(
+            subtopic, paper_analyses, academic_level, word_count, is_final_synthesis
+        )
 
-    def _chunked_synthesis(self, subtopic, paper_analyses, academic_level, word_count):
+    def _chunked_synthesis(
+        self, subtopic, paper_analyses, academic_level, word_count, is_final_synthesis: bool = False
+    ):
         """
         Perform multi-pass synthesis for large inputs.
 
@@ -152,6 +182,7 @@ class SynthesisExecutorAgent:
         3. Combine summaries and synthesize into final output
 
         IMPORTANT: Each chunk must stay under MAX_REQUEST_TOKENS to avoid 413 errors.
+        The final synthesis step will use critical_priority if is_final_synthesis=True.
         """
         # Split by paper separator
         papers = paper_analyses.split("\n\n---\n\n")
@@ -212,10 +243,18 @@ class SynthesisExecutorAgent:
         if len(combined_summaries) > MAX_SYNTHESIS_CHARS:
             # Still too large, do recursive summarization
             logger.warning("Combined summaries still large, doing recursive summarization")
-            return self._chunked_synthesis(subtopic, combined_summaries, academic_level, word_count)
+            return self._chunked_synthesis(
+                subtopic, combined_summaries, academic_level, word_count, is_final_synthesis
+            )
 
-        # Final synthesis
-        return self._single_synthesis(subtopic, combined_summaries, academic_level, word_count)
+        # Final synthesis - use critical_priority if this is the final synthesis
+        logger.info(
+            f"Performing final synthesis from {len(chunk_summaries)} chunk summaries"
+            f"{' (critical priority)' if is_final_synthesis else ''}"
+        )
+        return self._single_synthesis(
+            subtopic, combined_summaries, academic_level, word_count, is_final_synthesis
+        )
 
     def _summarize_chunk(self, chunk, subtopic):
         """
@@ -261,12 +300,16 @@ class SynthesisExecutorAgent:
                 return self.llm_client.chat(reduced_prompt)
             raise
 
-    def _synthesize_with_summary(self, subtopic, paper_analyses, academic_level, word_count):
+    def _synthesize_with_summary(
+        self, subtopic, paper_analyses, academic_level, word_count, is_final_synthesis: bool = False
+    ):
         """
         Fallback: summarize first, then synthesize.
 
         This is the last-resort method when all other synthesis approaches fail.
         It guarantees completion by using aggressive truncation.
+
+        For final synthesis, we still use critical_priority to wait for a powerful model.
         """
         # Calculate maximum content we can include in summary request
         summary_template_tokens = 200  # Estimated
@@ -301,7 +344,7 @@ class SynthesisExecutorAgent:
 
             [Note: Full analysis unavailable due to processing limits]"""
 
-        # Now synthesize from the summary
+        # Now synthesize from the summary - use critical_priority for final synthesis
         synthesis_prompt = f"""You are a Synthesis Executor agent specializing in academic writing.
         TASK: Create a literature review section based on the following research summary.
         Section Topic: {subtopic}
@@ -318,10 +361,14 @@ class SynthesisExecutorAgent:
         Research Summary:
         {summary}"""
 
-        logger.info(f"Final synthesis: using ~{self._estimate_tokens(synthesis_prompt)} tokens")
+        logger.info(
+            f"Final synthesis: using ~{self._estimate_tokens(synthesis_prompt)} tokens"
+            f"{' (critical priority)' if is_final_synthesis else ''}"
+        )
 
         try:
-            return self.llm_client.chat(synthesis_prompt)
+            # Use critical_priority for final synthesis to wait for powerful model
+            return self.llm_client.chat(synthesis_prompt, critical_priority=is_final_synthesis)
         except Exception as e:
             # Complete failure - return the summary as the final output
             logger.error(f"Final synthesis failed: {e}. Returning summary as output.")

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ResearchProject, ProjectCreate } from '../types';
-import { createProject as apiCreateProject, getProjects } from '../api/client';
+import { createProject as apiCreateProject, getProjects, deleteProject as apiDeleteProject } from '../api/client';
 import { toast } from 'react-toastify';
 
 interface ProjectState {
@@ -9,6 +9,7 @@ interface ProjectState {
     error: string | null;
     fetchProjects: () => Promise<void>;
     addProject: (newProjectData: ProjectCreate) => Promise<void>;
+    removeProject: (projectId: string) => Promise<boolean>;
     setProjects: (projects: ResearchProject[]) => void;
     updateProject: (updatedProject: ResearchProject) => void;
     updateProjectStatus: (projectId: string, status: ResearchProject['status']) => void;
@@ -23,7 +24,7 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
         try {
             const projects = await getProjects();
             set({ projects, isLoading: false });
-        } catch (error) {
+        } catch {
             const errorMessage = 'Failed to fetch projects.';
             set({ error: errorMessage, isLoading: false });
             toast.error(errorMessage);
@@ -70,6 +71,35 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
                 error: errorMessage
             }));
             toast.error(errorMessage);
+        }
+    },
+    removeProject: async (projectId) => {
+        // Store project info for potential rollback
+        const state = _get();
+        const projectToDelete = state.projects.find((p) => p.id === projectId);
+        
+        if (!projectToDelete) {
+            toast.error("Project not found");
+            return false;
+        }
+
+        // Optimistically remove from UI
+        set((state) => ({
+            projects: state.projects.filter((p) => p.id !== projectId),
+        }));
+
+        try {
+            await apiDeleteProject(projectId);
+            toast.success(`Project "${projectToDelete.title}" deleted successfully`);
+            return true;
+        } catch (error) {
+            console.error("Failed to delete project:", error);
+            // Rollback: restore the project
+            set((state) => ({
+                projects: [...state.projects, projectToDelete],
+            }));
+            toast.error("Failed to delete project. Please try again.");
+            return false;
         }
     },
     updateProjectStatus: (projectId, status) => {

@@ -341,10 +341,9 @@ jobs:
             -H "Content-Type: application/json" \
             "https://api.render.com/v1/services/${{ vars.RENDER_STAGING_SERVICE_ID }}/deploys")
           http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
+
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Staging backend deployment triggered successfully"
+            echo "✅ Staging backend deployment triggered successfully (HTTP $http_code)"
           else
             echo "❌ Failed to trigger staging backend deployment (HTTP $http_code)"
             exit 1
@@ -358,10 +357,9 @@ jobs:
           echo "Deploying frontend to Vercel staging..."
           response=$(curl -s -w "\n%{http_code}" -X POST "${{ vars.VERCEL_STAGING_DEPLOY_HOOK }}")
           http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
+
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Staging frontend deployment triggered successfully"
+            echo "✅ Staging frontend deployment triggered successfully (HTTP $http_code)"
           else
             echo "❌ Failed to trigger staging frontend deployment (HTTP $http_code)"
             exit 1
@@ -396,10 +394,9 @@ jobs:
             -H "Content-Type: application/json" \
             "https://api.render.com/v1/services/${{ vars.RENDER_SERVICE_ID }}/deploys")
           http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
+
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Production backend deployment triggered successfully"
+            echo "✅ Production backend deployment triggered successfully (HTTP $http_code)"
           else
             echo "❌ Failed to trigger production backend deployment (HTTP $http_code)"
             exit 1
@@ -429,5 +426,5 @@ jobs:
       - name: Notify deployment success
         run: |
           echo "✅ Production deployment triggered successfully!"
-          echo "Backend: Render (service: ${{ vars.RENDER_SERVICE_ID }})"
+          echo "Backend: Render"
           echo "Frontend: Vercel"

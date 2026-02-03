@@ -364,6 +364,87 @@ class TestProjectsEndpoints:
             assert "job_id" in data
             assert data["status"] == "queued"
 
+    def test_delete_project_success(self, setup_test_db, mock_user, mock_project):
+        """Test deleting a project successfully."""
+        import auth
+        from db import get_db
+        from main import app
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.query.return_value.filter.return_value.delete.return_value = 0
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+
+        with patch("main.RAGService", None):
+            response = client.delete(f"/api/projects/{mock_project.id}")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == mock_project.id
+        assert data["deleted"] is True
+        assert "deleted successfully" in data["message"]
+        mock_db.delete.assert_called_once_with(mock_project)
+        mock_db.commit.assert_called_once()
+        # Verify all related tables are queried for deletion (LLMInteraction, AgentPlan, PaperReference)
+        assert mock_db.query.return_value.filter.return_value.delete.call_count == 3
+
+    def test_delete_project_not_found(self, setup_test_db, mock_user):
+        """Test deleting non-existent project returns 404."""
+        import auth
+        from db import get_db
+        from main import app
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.delete("/api/projects/nonexistent-id")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]
+
+    def test_delete_project_unauthenticated_fails(self, client):
+        """Test deleting project without auth fails."""
+        response = client.delete("/api/projects/some-id")
+        assert response.status_code == 401
+
+    def test_delete_project_with_rag_cleanup(self, setup_test_db, mock_user, mock_project):
+        """Test deleting a project also cleans up RAG data."""
+        import auth
+        from db import get_db
+        from main import app
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.query.return_value.filter.return_value.delete.return_value = 0
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        # Mock RAGService
+        mock_rag_service = MagicMock()
+        mock_rag_class = MagicMock(return_value=mock_rag_service)
+
+        client = TestClient(app)
+
+        with patch("main.RAGService", mock_rag_class):
+            response = client.delete(f"/api/projects/{mock_project.id}")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        mock_rag_service.delete_project_data.assert_called_once_with(mock_project.id)
+
 
 # ============================================
 # Usage Tracking Tests

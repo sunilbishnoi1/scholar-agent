@@ -404,7 +404,12 @@ def extract_paper_insights(
 
 
 def synthesize_section(
-    llm_client, subtopic: str, paper_analyses: list[dict], academic_level: str, word_count: int
+    llm_client,
+    subtopic: str,
+    paper_analyses: list[dict],
+    academic_level: str,
+    word_count: int,
+    is_final_synthesis: bool = True,
 ) -> ToolResult:
     """
     Tool: Synthesize a literature review section from analyzed papers.
@@ -415,6 +420,7 @@ def synthesize_section(
         paper_analyses: List of paper analysis dictionaries
         academic_level: Writing level (e.g., "graduate")
         word_count: Target word count
+        is_final_synthesis: If True, wait for powerful model for best quality (default True)
 
     Returns:
         ToolResult with synthesized text
@@ -442,17 +448,18 @@ def synthesize_section(
     {analyses_text}
     
     OUTPUT FORMAT:
-    1. Section Introduction: Overview of topic and scope
+    1. Introduction: Overview of topic and scope
     2. Thematic Organization: Group findings by themes/approaches
     3. Critical Analysis: Compare/contrast findings, identify patterns
     4. Research Gaps: Highlight limitations and future directions
-    5. Section Conclusion: Synthesize key takeaways
+    5. Conclusion: Synthesize key takeaways
     
     Write the section now. Do NOT include a References section.
     """
 
     try:
-        response = llm_client.chat(prompt)
+        # Use critical_priority for final synthesis to wait for powerful model
+        response = llm_client.chat(prompt, critical_priority=is_final_synthesis)
         if response and len(response) > 50:
             return ToolResult(success=True, data=response)
         else:

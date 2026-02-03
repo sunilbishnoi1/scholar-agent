@@ -146,11 +146,9 @@ jobs:
             "https://api.render.com/v1/services/${{ vars.RENDER_SERVICE_ID }}/deploys")
 
           http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
 
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Production backend deployment triggered successfully"
+            echo "✅ Production backend deployment triggered successfully (HTTP $http_code)"
             echo "deployed=success" >> $GITHUB_OUTPUT
           else
             echo "❌ Failed to trigger production backend deployment (HTTP $http_code)"
@@ -186,6 +184,6 @@ jobs:
           echo "🎉 PRODUCTION DEPLOYMENT COMPLETE"
           echo "========================================="
           echo "Commit: ${{ github.event.workflow_run.head_sha }}"
-          echo "Backend: Render (service: ${{ vars.RENDER_SERVICE_ID }})"
+          echo "Backend: Render"
           echo "Frontend: Vercel"
           echo "========================================="

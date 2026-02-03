@@ -74,6 +74,12 @@ export const getProjectById = async (projectId: string): Promise<ResearchProject
     return data;
 }
 
+export const deleteProject = async (projectId: string): Promise<{ id: string; deleted: boolean; message: string }> => {
+    // Deletes a project and all its associated data
+    const { data } = await apiClient.delete(`/api/projects/${projectId}`);
+    return data;
+}
+
 
 // Agent Execution
 export const startLiteratureReview = async (projectId: string, maxPapers: number = 50): Promise<{ job_id: string, status: string }> => {

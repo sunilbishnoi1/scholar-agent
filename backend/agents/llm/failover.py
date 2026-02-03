@@ -366,6 +366,103 @@ class ModelFailoverManager:
                 }
             return status
 
+    def wait_for_model(
+        self,
+        preferred_model: str,
+        max_wait_seconds: float = 120.0,
+        check_interval: float = 5.0,
+    ) -> FailoverDecision:
+        """
+        Wait for a specific model to become available (for critical tasks like final synthesis).
+
+        This is used when a high-quality result is critical and we're willing to wait
+        for the best model to become available rather than using a degraded fallback.
+
+        Strategy:
+        1. First try the preferred model (e.g., llama-3.3-70b for final synthesis)
+        2. If in cooldown, wait up to max_wait_seconds for it to become available
+        3. If still unavailable, try any available model in priority order
+        4. Returns the best available model after waiting
+
+        Args:
+            preferred_model: The model we want (e.g., "llama-3.3-70b-versatile")
+            max_wait_seconds: Maximum time to wait for the preferred model
+            check_interval: How often to check if model is available
+
+        Returns:
+            FailoverDecision with the selected model
+        """
+        start_time = time.time()
+        elapsed = 0.0
+
+        while elapsed < max_wait_seconds:
+            with self._lock:
+                # Check if preferred model is available
+                state = self._cooldown_states.get(preferred_model)
+                if state and not state.is_in_cooldown():
+                    logger.info(
+                        f"wait_for_model: {preferred_model} is available after "
+                        f"{elapsed:.1f}s wait"
+                    )
+                    return FailoverDecision(
+                        original_model=preferred_model,
+                        selected_model=preferred_model,
+                        reason="Preferred model available after wait",
+                        was_failover=False,
+                        metadata={"wait_time": elapsed},
+                    )
+
+                remaining_cooldown = state.remaining_cooldown() if state else 0
+
+            # If cooldown will end within our wait window, wait for it
+            if remaining_cooldown > 0 and remaining_cooldown < (max_wait_seconds - elapsed):
+                wait_time = min(remaining_cooldown + 1.0, check_interval)
+                logger.info(
+                    f"wait_for_model: {preferred_model} in cooldown for "
+                    f"{remaining_cooldown:.1f}s more, waiting {wait_time:.1f}s"
+                )
+                time.sleep(wait_time)
+                elapsed = time.time() - start_time
+                continue
+
+            # Check other models in priority order
+            # Give preference to powerful models for critical tasks
+            priority_for_critical = [
+                "llama-3.3-70b-versatile",  # Powerful - best for synthesis
+                "qwen/qwen3-32b",  # Medium quality
+                "llama-3.1-8b-instant",  # Fast but lower quality
+            ]
+
+            with self._lock:
+                for model_name in priority_for_critical:
+                    if model_name == preferred_model:
+                        continue
+                    alt_state = self._cooldown_states.get(model_name)
+                    if alt_state and not alt_state.is_in_cooldown():
+                        logger.info(
+                            f"wait_for_model: Using alternative {model_name} "
+                            f"(preferred {preferred_model} still in cooldown)"
+                        )
+                        return FailoverDecision(
+                            original_model=preferred_model,
+                            selected_model=model_name,
+                            reason=f"Used alternative while waiting for {preferred_model}",
+                            was_failover=True,
+                            metadata={"wait_time": elapsed},
+                        )
+
+            # All models in cooldown, wait a bit and retry
+            time.sleep(check_interval)
+            elapsed = time.time() - start_time
+
+        # Timeout - return best available model
+        logger.warning(
+            f"wait_for_model: Timeout ({max_wait_seconds}s) waiting for {preferred_model}"
+        )
+
+        # Return whatever is available (or will be available soonest)
+        return self.get_available_model(preferred_model)
+
     def _find_any_available_model(
         self,
         failed_model: str,
