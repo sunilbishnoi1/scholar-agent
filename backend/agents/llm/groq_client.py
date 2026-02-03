@@ -437,6 +437,10 @@ class GroqClient(BaseLLMClient):
 
         # Select model based on task type
         model_name, tier = self._select_model(task_type, complexity_hint, max_latency_ms)
+        estimated_tokens = len(prompt) // 4
+
+        # Determine if this is a synthesis/summarization task that needs higher quality
+        is_synthesis_task = task_type in ("synthesis", "summarization", "complex_reasoning")
 
         # For critical priority tasks, prefer the powerful model and wait for it
         if critical_priority:
@@ -456,9 +460,21 @@ class GroqClient(BaseLLMClient):
                 )
             else:
                 logger.info(f"Critical task: Using preferred model {actual_model}")
+        elif is_synthesis_task:
+            # For synthesis/summarization tasks, use dedicated model selection
+            # This prefers llama-70b and qwen over 8b for better quality
+            logger.info(f"Synthesis task: using get_model_for_synthesis for {task_type}")
+            failover_decision = self.failover_manager.get_model_for_synthesis(
+                prompt_tokens=estimated_tokens,
+                max_wait_seconds=30.0,  # Wait up to 30s for a good model
+            )
+            actual_model = failover_decision.selected_model
+            if failover_decision.was_failover:
+                logger.info(
+                    f"Synthesis task: Using {actual_model} " f"(reason: {failover_decision.reason})"
+                )
         else:
             # Regular failover behavior - don't wait, switch immediately
-            estimated_tokens = len(prompt) // 4
             failover_decision = self.failover_manager.get_available_model(
                 preferred_model=model_name,
                 prompt_tokens=estimated_tokens,
@@ -572,7 +588,7 @@ class GroqClient(BaseLLMClient):
                 failover = self.failover_manager.handle_failure(
                     model=current_model,
                     reason=FailoverReason.TPM_APPROACHING,
-                    skip_cooldown=True,  # Don't penalize for preemptive switch
+                    preemptive_cooldown=True,  # Short cooldown to prevent immediate retry
                 )
                 if (
                     failover.selected_model != current_model
@@ -586,8 +602,22 @@ class GroqClient(BaseLLMClient):
                     attempt += 1
                     continue
                 else:
-                    # All models at rate limit - try current one anyway (might work)
-                    logger.warning(f"All models at rate limits, trying {current_model} anyway")
+                    # All models at rate limit - MUST WAIT before retrying
+                    # Get the shortest cooldown from failover manager
+                    status = self.failover_manager.get_status()
+                    shortest_wait = min(
+                        (s.get("cooldown_remaining", 60.0) for s in status.values()),
+                        default=10.0,
+                    )
+                    # Wait at least 5 seconds, but not more than 30 seconds
+                    wait_time = max(5.0, min(shortest_wait + 2.0, 30.0))
+                    logger.warning(
+                        f"All models at rate limits. Waiting {wait_time:.1f}s before retry. "
+                        f"(attempt {attempt + 1}/{max_failover_attempts})"
+                    )
+                    time.sleep(wait_time)
+
+                    # After waiting, try current model
                     try:
                         result = self._make_single_api_call(
                             current_model, prompt, allow_preemptive_switch=False, **kwargs
@@ -596,6 +626,9 @@ class GroqClient(BaseLLMClient):
                     except Exception as inner_e:
                         last_error = inner_e
                         attempt += 1
+                        # Reset tried_models to allow cycling through models again after wait
+                        tried_models.clear()
+                        tried_models.add(current_model)
                         continue
 
             except NonRetryableError as e:
@@ -709,17 +742,30 @@ class GroqClient(BaseLLMClient):
                     # Small delay before trying new model
                     time.sleep(0.5)
                     continue
-                elif failover.cooldown_remaining > 0:
-                    # All models in cooldown, wait and retry
-                    wait_time = min(failover.cooldown_remaining, 30.0)
-                    logger.warning(f"All models in cooldown, waiting {wait_time:.1f}s")
+                else:
+                    # All models exhausted - must wait before retrying
+                    # Use cooldown_remaining if available, otherwise use retry_after from error,
+                    # or a sensible default based on Groq's ~60s rate limit reset
+                    wait_time = failover.cooldown_remaining
+                    if wait_time <= 0 and retry_after:
+                        wait_time = min(retry_after, 30.0)
+                    if wait_time <= 0:
+                        # Default wait - Groq rate limits reset every ~60s
+                        wait_time = 10.0
+                    wait_time = max(5.0, min(wait_time, 30.0))  # Clamp between 5-30 seconds
+
+                    logger.warning(
+                        f"All models exhausted after {failover_reason.value}. "
+                        f"Waiting {wait_time:.1f}s before retry. "
+                        f"(attempt {attempt + 1}/{max_failover_attempts})"
+                    )
                     time.sleep(wait_time)
                     attempt += 1
                     last_error = e
+                    # Reset tried models to allow cycling again
+                    tried_models.clear()
+                    tried_models.add(current_model)
                     continue
-
-                # No failover available, re-raise
-                raise
 
             except Exception as e:
                 # Unexpected error, try failover as server error

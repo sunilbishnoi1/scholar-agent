@@ -25,6 +25,7 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
 
     Handles:
     - Markdown code blocks (```json ... ```)
+    - Preamble text (e.g., "Here's the analysis...")
     - Multiple JSON objects (takes first complete one)
     - Extra text before/after JSON
     - Truncated responses
@@ -39,7 +40,9 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
     if not response or not response.strip():
         return default or {}
 
-    # Step 1: Clean markdown code blocks
+    original_response = response
+
+    # Step 1: Clean markdown code blocks and common preambles
     clean = re.sub(r"```json\s*", "", response)
     clean = re.sub(r"```\s*$", "", clean)
     clean = re.sub(r"```", "", clean)
@@ -56,6 +59,15 @@ def extract_json_from_response(response: str, default: dict | None = None) -> di
     if start_idx == -1:
         logger.warning(f"No JSON object found in response: {clean[:100]}...")
         return default or {}
+
+    # Warn if preamble text was detected (text before JSON)
+    if start_idx > 0:
+        preamble = clean[:start_idx].strip()
+        if preamble:
+            logger.warning(
+                f"LLM added preamble text before JSON (this should not happen): '{preamble[:100]}...'. "
+                "Prompt may need to be more explicit about JSON-only output."
+            )
 
     # Track brace depth to find matching closing brace
     depth = 0
@@ -143,7 +155,8 @@ def extract_keywords_from_question(llm_client, research_question: str, title: st
     - Common abbreviations in the field
 
     Provide the output as a JSON object with a single key "keywords" containing a list of strings.
-    Output ONLY the JSON object, no other text.
+    
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
 
     Example: {{"keywords": ["machine learning", "ML", "artificial intelligence", "predictive modeling"]}}
     """
@@ -187,7 +200,8 @@ def identify_subtopics(llm_client, research_question: str, title: str) -> ToolRe
     Each subtopic should represent a distinct aspect or theme of the research area.
 
     Provide the output as a JSON object with a single key "subtopics" containing a list of strings.
-    Output ONLY the JSON object, no other text.
+    
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
 
     Example: {{"subtopics": ["Historical Development", "Current Applications", "Challenges and Limitations", "Future Directions"]}}
     """
@@ -238,7 +252,8 @@ def refine_search_query(
     - Removing overly specific terms
 
     Provide the output as a JSON object with a single key "refined_keywords" containing a list of strings.
-    Output ONLY the JSON object, no other text.
+    
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
     """
 
     try:
@@ -291,7 +306,8 @@ def score_paper_relevance(
     - 81-100: Highly relevant
 
     Output as JSON with "score" (integer) and "justification" (brief string, max 100 chars).
-    Output ONLY the JSON object, no explanation.
+    
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
 
     Example: {{"score": 75, "justification": "Directly addresses ML in education."}}
     """
@@ -507,7 +523,8 @@ def identify_research_gaps(
     - Potential research directions
 
     Output as JSON with key "research_gaps" containing a list of objects with keys "description", "importance", "directions".
-    Output ONLY the JSON object.
+    
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
     """
 
     try:
@@ -564,7 +581,7 @@ def evaluate_synthesis_quality(
     - "feedback": Specific suggestions for improvement
     - "should_refine": Boolean, true if score < 70
 
-    Output ONLY the JSON object.
+    CRITICAL: Output ONLY the JSON object. Do NOT include any preamble, explanations, or markdown. Start directly with {{ and end with }}.
     """
 
     try:

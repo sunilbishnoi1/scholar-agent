@@ -198,7 +198,8 @@ class ResearchPlannerAgent(ToolEnabledAgent):
         2. A list of 4-6 specific subtopics to structure the literature review.
 
         Provide the output as a single JSON object with two keys: "keywords" and "subtopics".
-        Ensure the output is ONLY the JSON object, without any surrounding text or markdown.
+        
+        CRITICAL: Output ONLY the JSON object. Do NOT include any preamble text (like "Here's the plan" or "Here is the JSON"), explanations, or markdown code blocks (```json). Start your response directly with {{ and end with }}.
 
         Example Output:
         {{
@@ -208,8 +209,9 @@ class ResearchPlannerAgent(ToolEnabledAgent):
         """
         response_str = self.llm_client.chat(prompt)
         try:
-            clean_response = re.sub(r"```json\s*|\s*```", "", response_str).strip()
-            data = json.loads(clean_response)
+            from agents.tools import extract_json_from_response
+
+            data = extract_json_from_response(response_str, {"keywords": [], "subtopics": []})
 
             keywords = data.get("keywords", [])
             subtopics = data.get("subtopics", [])

@@ -92,7 +92,7 @@ const markdownToDocxElements = (markdown: string): Paragraph[] => {
             new Paragraph({
               text: text,
               bullet: { level: 0 },
-            })
+            }),
           );
         });
         break;
@@ -108,7 +108,7 @@ const markdownToDocxElements = (markdown: string): Paragraph[] => {
                 size: 6,
               },
             },
-          })
+          }),
         );
         break;
       }
@@ -169,11 +169,12 @@ const ProjectDetailsPage = () => {
 
   const exportToDocx = () => {
     const synthesizerPlan = project?.agent_plans.find(
-      (p) => p.agent_type === "synthesizer"
+      (p) => p.agent_type === "synthesizer",
     );
     const synthesisOutput =
-      synthesizerPlan?.plan_steps[0]?.output.response ||
-      "No synthesis available.";
+      (typeof synthesizerPlan?.plan_steps[0]?.output.response === "string"
+        ? synthesizerPlan?.plan_steps[0]?.output.response
+        : "") || "No synthesis available.";
 
     const docElements = markdownToDocxElements(synthesisOutput);
 
@@ -228,11 +229,12 @@ const ProjectDetailsPage = () => {
   }
 
   const synthesizerPlan = project.agent_plans.find(
-    (p) => p.agent_type === "synthesizer"
+    (p) => p.agent_type === "synthesizer",
   );
   const synthesisOutput =
-    synthesizerPlan?.plan_steps[0]?.output.response ||
-    "No synthesis available.";
+    (typeof synthesizerPlan?.plan_steps[0]?.output.response === "string"
+      ? synthesizerPlan?.plan_steps[0]?.output.response
+      : "") || "No synthesis available.";
 
   return (
     <Box sx={{ px: { xs: 1, sm: 2, md: 16 }, py: { xs: 2, sm: 4 } }}>
@@ -361,19 +363,19 @@ const ProjectDetailsPage = () => {
           >
             {project.paper_references
               .sort(
-                (a, b) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0)
+                (a, b) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0),
               )
               .reduce(
                 (
                   rows: PaperReference[][],
                   _paper: PaperReference,
                   idx: number,
-                  arr: PaperReference[]
+                  arr: PaperReference[],
                 ) => {
                   if (idx % 2 === 0) rows.push(arr.slice(idx, idx + 2));
                   return rows;
                 },
-                [] as PaperReference[][]
+                [] as PaperReference[][],
               )
               .map((row, rowIdx) => (
                 <Box
@@ -413,7 +415,13 @@ const ProjectDetailsPage = () => {
                         >
                           {paper.title}
                         </Typography>
-                        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                          }}
+                        >
                           <Typography
                             className="font-medium text-indigo-600 bg-indigo-100/40 px-2 py-1 rounded-md"
                             sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" } }}
@@ -429,7 +437,6 @@ const ProjectDetailsPage = () => {
                                         sm:px-1 sm:py-1 sm:text-sm
                                         md:px-2 md:py-1 md:text-sm"
                           >
-                            
                             Read Paper
                           </a>
                         </Box>
