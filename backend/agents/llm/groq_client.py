@@ -388,14 +388,27 @@ class GroqClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
+        critical_priority: bool = False,
         **kwargs,
     ) -> str:
-        """Send a chat request and return the response text."""
+        """
+        Send a chat request and return the response text.
+
+        Args:
+            prompt: The prompt to send
+            task_type: Type of task for routing decisions
+            complexity_hint: Optional hint about complexity
+            max_latency_ms: Optional latency requirement
+            critical_priority: If True, wait for powerful model instead of using fallback.
+                              Use this for final synthesis/reports where quality is critical.
+            **kwargs: Additional arguments
+        """
         response = self.chat_with_response(
             prompt=prompt,
             task_type=task_type,
             complexity_hint=complexity_hint,
             max_latency_ms=max_latency_ms,
+            critical_priority=critical_priority,
             **kwargs,
         )
         return response.text
@@ -406,27 +419,58 @@ class GroqClient(BaseLLMClient):
         task_type: str = "general",
         complexity_hint: str | None = None,
         max_latency_ms: int | None = None,
+        critical_priority: bool = False,
         **kwargs,
     ) -> LLMResponse:
-        """Send a chat request and return full response with metadata."""
+        """
+        Send a chat request and return full response with metadata.
+
+        Args:
+            prompt: The prompt to send
+            task_type: Type of task for routing decisions
+            complexity_hint: Optional hint about complexity
+            max_latency_ms: Optional latency requirement
+            critical_priority: If True, wait for powerful model instead of using fallback.
+                              Use this for final synthesis/reports where quality is critical.
+            **kwargs: Additional arguments
+        """
 
         # Select model based on task type
         model_name, tier = self._select_model(task_type, complexity_hint, max_latency_ms)
 
-        # Check failover manager for model availability
-        estimated_tokens = len(prompt) // 4
-        failover_decision = self.failover_manager.get_available_model(
-            preferred_model=model_name,
-            prompt_tokens=estimated_tokens,
-        )
-
-        # Use the model selected by failover manager
-        actual_model = failover_decision.selected_model
-        if failover_decision.was_failover:
-            logger.warning(
-                f"Failover active: {model_name} -> {actual_model} "
-                f"(reason: {failover_decision.reason})"
+        # For critical priority tasks, prefer the powerful model and wait for it
+        if critical_priority:
+            preferred_model = GROQ_MODELS.get(ModelTier.POWERFUL).name
+            logger.info(f"Critical priority task: waiting for powerful model {preferred_model}")
+            # Wait up to 120 seconds for the powerful model to become available
+            failover_decision = self.failover_manager.wait_for_model(
+                preferred_model=preferred_model,
+                max_wait_seconds=120.0,
+                check_interval=5.0,
             )
+            actual_model = failover_decision.selected_model
+            if failover_decision.was_failover:
+                logger.warning(
+                    f"Critical task: Preferred {preferred_model} unavailable, "
+                    f"using {actual_model} after wait"
+                )
+            else:
+                logger.info(f"Critical task: Using preferred model {actual_model}")
+        else:
+            # Regular failover behavior - don't wait, switch immediately
+            estimated_tokens = len(prompt) // 4
+            failover_decision = self.failover_manager.get_available_model(
+                preferred_model=model_name,
+                prompt_tokens=estimated_tokens,
+            )
+
+            # Use the model selected by failover manager
+            actual_model = failover_decision.selected_model
+            if failover_decision.was_failover:
+                logger.warning(
+                    f"Failover active: {model_name} -> {actual_model} "
+                    f"(reason: {failover_decision.reason})"
+                )
 
         logger.info(f"Groq routing: {task_type} -> {actual_model} (original: {model_name})")
 

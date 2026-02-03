@@ -25,7 +25,7 @@ import auth
 from agents.llm import get_llm_client
 from agents.planner import ResearchPlannerAgent
 from db import engine, get_db
-from models.database import AgentPlan, Base, PaperReference, ResearchProject, User
+from models.database import AgentPlan, Base, LLMInteraction, PaperReference, ResearchProject, User
 from paper_retriever import PaperRetriever
 from services.usage_tracker import UsageTracker
 
@@ -460,6 +460,64 @@ def start_literature_review(
 
     job = celery_app.send_task("run_literature_review", args=[project_id, max_papers])
     return {"job_id": job.id, "status": "queued", "estimated_duration": f"PT{max_papers // 2}M"}
+
+
+class DeleteProjectResponse(BaseModel):
+    id: str
+    deleted: bool
+    message: str
+
+
+@projects_router.delete("/projects/{project_id}", response_model=DeleteProjectResponse)
+def delete_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """
+    Delete a project and all its associated data.
+    This includes: agent plans, paper references, and RAG data (if available).
+    """
+    project = (
+        db.query(ResearchProject)
+        .filter(ResearchProject.id == project_id, ResearchProject.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project_title = project.title
+
+    # Delete associated RAG data if the service is available
+    if RAGService is not None:
+        try:
+            rag_service = RAGService()
+            rag_service.delete_project_data(project_id)
+            logging.info(f"Deleted RAG data for project {project_id}")
+        except Exception as e:
+            logging.warning(f"Failed to delete RAG data for project {project_id}: {e}")
+            # Continue with deletion even if RAG cleanup fails
+
+    # Delete associated LLM interactions (has FK to project)
+    db.query(LLMInteraction).filter(LLMInteraction.project_id == project_id).delete()
+
+    # Delete associated agent plans
+    db.query(AgentPlan).filter(AgentPlan.project_id == project_id).delete()
+
+    # Delete associated paper references
+    db.query(PaperReference).filter(PaperReference.project_id == project_id).delete()
+
+    # Delete the project itself
+    db.delete(project)
+    db.commit()
+
+    logging.info(f"User {current_user.id} deleted project {project_id} ('{project_title}')")
+
+    return DeleteProjectResponse(
+        id=project_id,
+        deleted=True,
+        message=f"Project '{project_title}' and all associated data deleted successfully",
+    )
 
 
 # --- App Integration ---

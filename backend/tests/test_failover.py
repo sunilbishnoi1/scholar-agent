@@ -446,3 +446,102 @@ class TestFailoverIntegration:
         state = client.failover_manager._cooldown_states["llama-3.1-8b-instant"]
         assert state.is_in_cooldown()
         assert state.remaining_cooldown() <= 60
+
+
+class TestWaitForModel:
+    """Tests for the wait_for_model critical priority feature."""
+
+    def test_wait_for_model_returns_immediately_if_available(self):
+        """wait_for_model should return immediately if preferred model is available."""
+        manager = ModelFailoverManager()
+
+        # Model is not in cooldown, should return immediately
+        decision = manager.wait_for_model(
+            preferred_model="llama-3.3-70b-versatile",
+            max_wait_seconds=10.0,
+            check_interval=1.0,
+        )
+
+        assert decision.selected_model == "llama-3.3-70b-versatile"
+        assert not decision.was_failover
+        assert "wait_time" in decision.metadata
+        assert decision.metadata["wait_time"] < 1.0  # Should be nearly instant
+
+    def test_wait_for_model_waits_for_cooldown_to_expire(self):
+        """wait_for_model should wait for short cooldowns to expire."""
+        manager = ModelFailoverManager()
+
+        # Put preferred model in short cooldown (2 seconds)
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 2.0
+
+        start = time.time()
+        decision = manager.wait_for_model(
+            preferred_model="llama-3.3-70b-versatile",
+            max_wait_seconds=10.0,
+            check_interval=1.0,
+        )
+        elapsed = time.time() - start
+
+        assert decision.selected_model == "llama-3.3-70b-versatile"
+        assert elapsed >= 2.0  # Should have waited at least 2 seconds
+
+    def test_wait_for_model_uses_alternative_if_available(self):
+        """wait_for_model should use alternative model if preferred is in long cooldown."""
+        manager = ModelFailoverManager()
+
+        # Put preferred model in long cooldown (200 seconds)
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 200.0
+        # qwen should be available
+        manager._cooldown_states["qwen/qwen3-32b"].cooldown_until = 0.0
+
+        decision = manager.wait_for_model(
+            preferred_model="llama-3.3-70b-versatile",
+            max_wait_seconds=5.0,  # Only wait 5 seconds
+            check_interval=1.0,
+        )
+
+        # Should use qwen since it's available and waiting would be too long
+        assert decision.selected_model == "qwen/qwen3-32b"
+        assert decision.was_failover
+
+    def test_wait_for_model_prioritizes_powerful_models_for_critical_tasks(self):
+        """wait_for_model should prefer powerful models for critical tasks."""
+        manager = ModelFailoverManager()
+
+        # Put 70b in cooldown, but 8b and qwen available
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 200.0
+        manager._cooldown_states["qwen/qwen3-32b"].cooldown_until = 0.0
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = 0.0
+
+        decision = manager.wait_for_model(
+            preferred_model="llama-3.3-70b-versatile",
+            max_wait_seconds=5.0,
+            check_interval=1.0,
+        )
+
+        # Should use qwen (medium quality) over 8b (fast but lower quality)
+        # because priority_for_critical puts qwen before 8b
+        assert decision.selected_model == "qwen/qwen3-32b"
+
+    def test_wait_for_model_times_out_and_returns_best_available(self):
+        """wait_for_model should return best available after timeout."""
+        manager = ModelFailoverManager()
+
+        # Put all models in long cooldown
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 200.0
+        manager._cooldown_states["qwen/qwen3-32b"].cooldown_until = time.time() + 150.0
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = time.time() + 100.0
+
+        start = time.time()
+        decision = manager.wait_for_model(
+            preferred_model="llama-3.3-70b-versatile",
+            max_wait_seconds=3.0,  # Short timeout
+            check_interval=1.0,
+        )
+        elapsed = time.time() - start
+
+        # Should have waited approximately max_wait_seconds
+        assert elapsed >= 2.5
+        assert elapsed <= 5.0  # Some buffer for timing
+        # Should fall back to get_available_model which picks shortest cooldown
+        assert decision.selected_model is not None
