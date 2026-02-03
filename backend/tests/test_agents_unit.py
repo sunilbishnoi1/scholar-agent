@@ -318,6 +318,76 @@ class TestSynthesisExecutorAgent:
         assert "## Research Gaps" in combined
 
 
+class TestLegacySynthesizer:
+    """Tests for the legacy SynthesisExecutorAgent (agents/synthesizer.py).
+
+    This is the actual synthesizer used in main.py for Celery tasks.
+    """
+
+    def test_legacy_synthesizer_token_estimation(self, mock_llm_client):
+        """_estimate_tokens should return reasonable estimates."""
+        # Import the legacy synthesizer
+        from agents.synthesizer import SynthesisExecutorAgent as LegacySynthesizer
+
+        synthesizer = LegacySynthesizer(mock_llm_client)
+        # Roughly 4 chars per token
+        assert synthesizer._estimate_tokens("hello world") == 2  # 11 chars / 4 = 2
+        assert synthesizer._estimate_tokens("a" * 100) == 25  # 100 / 4 = 25
+        assert synthesizer._estimate_tokens("") == 0
+
+    def test_legacy_synthesizer_chunked_synthesis_for_large_inputs(self, mock_llm_client):
+        """Large inputs should trigger chunked synthesis in legacy synthesizer."""
+        from agents.synthesizer import SynthesisExecutorAgent as LegacySynthesizer
+
+        mock_llm_client.chat.return_value = "Summarized content"
+
+        synthesizer = LegacySynthesizer(mock_llm_client)
+
+        # Create a large input (>16K chars to trigger chunking)
+        large_input = "Paper analysis content. " * 1000  # ~24K chars
+
+        result = synthesizer.synthesize_section("Test Topic", large_input, "graduate", 500)
+
+        # Should have made multiple LLM calls (chunked)
+        assert mock_llm_client.chat.call_count >= 2
+        assert result is not None
+
+    def test_legacy_synthesizer_validates_token_count(self, mock_llm_client):
+        """Legacy synthesize_section should pre-validate and truncate if needed."""
+        from agents.synthesizer import SynthesisExecutorAgent as LegacySynthesizer
+
+        mock_llm_client.chat.return_value = "Synthesized result"
+
+        synthesizer = LegacySynthesizer(mock_llm_client)
+
+        # Create input just at the limit (should not trigger chunking)
+        small_input = "Paper analysis. " * 100  # ~1600 chars, well under limit
+
+        result = synthesizer.synthesize_section("Test Topic", small_input, "graduate", 500)
+
+        assert result == "Synthesized result"
+        # Single call expected for small input
+        assert mock_llm_client.chat.call_count == 1
+
+    def test_legacy_synthesizer_handles_413_gracefully(self, mock_llm_client):
+        """Legacy synthesizer should handle 413 errors by reducing prompt size."""
+        from agents.synthesizer import SynthesisExecutorAgent as LegacySynthesizer
+
+        # First call fails with 413, second succeeds
+        mock_llm_client.chat.side_effect = [
+            Exception("413 Payload Too Large"),
+            "Synthesized result after reduction",
+        ]
+
+        synthesizer = LegacySynthesizer(mock_llm_client)
+        small_input = "Paper analysis. " * 100
+
+        result = synthesizer.synthesize_section("Test Topic", small_input, "graduate", 500)
+
+        # Should have retried with smaller prompt
+        assert mock_llm_client.chat.call_count >= 2
+        assert "Synthesized result" in result
+
 # ============================================
 # QUALITY CHECKER AGENT TESTS
 # ============================================
