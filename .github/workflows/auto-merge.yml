@@ -1,5 +1,6 @@
 # Auto-merge develop to main after all tests pass
 # This workflow creates a PR, merges it, and DEPLOYS to production
+# Version: 1.1
 
 name: Auto Merge to Main
 
