@@ -83,12 +83,21 @@ class ModelFailoverManager:
 
     # Failover chains: what model to use when the primary fails
     # Key: (original_model, failure_reason) -> fallback_model
-    # EXTENDED: Now includes 413 failover for ALL models, including Qwen
+    #
+    # TPM LIMITS (critical for 413 handling):
+    # - llama-3.1-8b-instant: 6K TPM
+    # - llama-3.3-70b-versatile: 12K TPM (HIGHEST - use for large payloads!)
+    # - qwen/qwen3-32b: 6K TPM
+    #
+    # 413 STRATEGY: Always try llama-70b (12K TPM) before qwen (6K TPM)
     FAILOVER_CHAIN = {
-        # 413 Payload Too Large: upgrade to larger model OR try smaller chunks
+        # 413 Payload Too Large: upgrade to model with higher TPM
+        # 8b (6K) -> 70b (12K) - upgrade to higher TPM
         ("llama-3.1-8b-instant", FailoverReason.PAYLOAD_TOO_LARGE_413): "llama-3.3-70b-versatile",
+        # 70b (12K) -> qwen (6K) - 70b has highest TPM, if still fails try qwen
         ("llama-3.3-70b-versatile", FailoverReason.PAYLOAD_TOO_LARGE_413): "qwen/qwen3-32b",
-        ("qwen/qwen3-32b", FailoverReason.PAYLOAD_TOO_LARGE_413): None,  # Signal to chunk/reduce
+        # qwen (6K) -> 70b (12K) - try 70b since it has higher TPM
+        ("qwen/qwen3-32b", FailoverReason.PAYLOAD_TOO_LARGE_413): "llama-3.3-70b-versatile",
         # 429 Rate Limit: switch to different model family immediately
         ("llama-3.1-8b-instant", FailoverReason.RATE_LIMIT_429): "qwen/qwen3-32b",
         ("llama-3.3-70b-versatile", FailoverReason.RATE_LIMIT_429): "qwen/qwen3-32b",

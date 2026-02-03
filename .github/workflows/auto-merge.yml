@@ -1,11 +1,5 @@
 # Auto-merge develop to main after all tests pass
-# This workflow creates a PR and uses GitHub's auto-merge feature
-# to respect branch protection rules on main
-#
-# NOTE: Only triggered by workflow_run (not push) to avoid:
-# 1. Holding a runner hostage while polling for CI completion
-# 2. Duplicate runs (push + workflow_run would trigger twice)
-# 3. Resource contention that can cause job cancellations
+# This workflow creates a PR, merges it, and DEPLOYS to production
 
 name: Auto Merge to Main
 
@@ -14,6 +8,9 @@ on:
     workflows: ["CI/CD Pipeline"]
     branches: [develop]
     types: [completed]
+
+env:
+  NODE_VERSION: "20"
 
 jobs:
   auto-merge:
@@ -24,6 +21,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
 
     steps:
       - name: Checkout code
@@ -33,6 +32,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create or Update PR and Merge
+        id: merge
         run: |
           echo "✅ CI/CD Pipeline passed! Creating/updating PR..."
           echo "Checking for existing PR from develop to main..."
@@ -72,17 +72,29 @@ jobs:
 
           # Try to merge the PR
           echo "Attempting to merge PR #$PR_NUMBER..."
+          MERGED=false
           if gh pr merge "$PR_NUMBER" --merge --auto; then
             echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
+            # Wait for auto-merge to complete
+            sleep 10
+            # Check if it actually merged
+            PR_STATE=$(gh pr view "$PR_NUMBER" --json state --jq '.state')
+            if [ "$PR_STATE" = "MERGED" ]; then
+              MERGED=true
+            fi
           else
             # If auto-merge fails (e.g., not enabled in repo), try direct merge
             echo "Auto-merge not available, attempting direct merge..."
             if gh pr merge "$PR_NUMBER" --merge; then
               echo "✅ PR #$PR_NUMBER merged successfully!"
+              MERGED=true
             else
               echo "⚠️ Could not merge PR automatically. PR #$PR_NUMBER is ready for manual review."
             fi
           fi
+
+          echo "merged=$MERGED" >> $GITHUB_OUTPUT
+          echo "Merge status: $MERGED"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -97,3 +109,82 @@ jobs:
             -f body="❌ Auto-merge to main failed. Please check the workflow logs for details."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================
+  # Deploy to Production after merge
+  # ==========================================
+  # CRITICAL: This job runs deployment because GITHUB_TOKEN merges
+  # do NOT trigger subsequent workflows (GitHub's infinite loop prevention).
+  # We deploy here since CI already passed on develop.
+  deploy-production:
+    name: Deploy to Production
+    needs: auto-merge
+    if: needs.auto-merge.outputs.merged == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code (main branch)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Deploy Backend to Render
+        id: deploy-backend
+        run: |
+          echo "🚀 Deploying backend to production..."
+
+          if [ -z "${{ vars.RENDER_SERVICE_ID }}" ]; then
+            echo "⚠️ RENDER_SERVICE_ID not configured, skipping backend deployment"
+            echo "deployed=skipped" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ vars.RENDER_SERVICE_ID }}/deploys")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "Response: $body"
+
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Production backend deployment triggered successfully"
+            echo "deployed=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to trigger production backend deployment (HTTP $http_code)"
+            echo "deployed=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+
+      - name: Setup Node.js for Vercel CLI
+        if: vars.VERCEL_DEPLOY_ENABLED == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Deploy Frontend to Vercel (Production)
+        if: vars.VERCEL_DEPLOY_ENABLED == 'true'
+        run: |
+          echo "🚀 Deploying frontend to Vercel production..."
+          npm install -g vercel@latest
+
+          vercel deploy --prod --yes \
+            --token "${{ secrets.VERCEL_TOKEN }}"
+
+          echo "✅ Frontend deployment triggered"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deployment Summary
+        run: |
+          echo "========================================="
+          echo "🎉 PRODUCTION DEPLOYMENT COMPLETE"
+          echo "========================================="
+          echo "Commit: ${{ github.event.workflow_run.head_sha }}"
+          echo "Backend: Render (service: ${{ vars.RENDER_SERVICE_ID }})"
+          echo "Frontend: Vercel"
+          echo "========================================="
