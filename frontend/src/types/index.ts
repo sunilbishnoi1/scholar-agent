@@ -37,11 +37,11 @@ export interface AgentPlan {
         step: string;
         status: string;
         output: {
-            response: any;
+            response: string | Record<string, unknown>;
         };
     }[];
     current_step: number;
-    plan_metadata: any;
+    plan_metadata: Record<string, unknown>;
 }
 
 export interface ProjectCreate {

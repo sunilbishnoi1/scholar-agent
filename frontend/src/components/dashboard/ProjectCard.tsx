@@ -29,19 +29,26 @@ import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { useProjectStatusPoller } from "../../hooks/useProjectStatusPoller";
+import { useProjectStream } from "../../hooks/useProjectStream";
 
 interface ProjectCardProps {
   project: ResearchProject;
 }
 
-const ProgressTracker: React.FC<{ project: ResearchProject }> = ({
-  project,
-}) => {
-  const papersAnalyzed = project.agent_plans.filter(
-    (p) => p.agent_type === "analyzer",
-  ).length;
-  const totalPapersToAnalyze = project.total_papers_found;
+const ProgressTracker: React.FC<{
+  project: ResearchProject;
+  realtimePapersAnalyzed?: number;
+  realtimeTotalPapers?: number;
+}> = ({ project, realtimePapersAnalyzed, realtimeTotalPapers }) => {
+  // Prefer real-time WebSocket counts over static project data
+  const papersAnalyzed =
+    realtimePapersAnalyzed !== undefined
+      ? realtimePapersAnalyzed
+      : project.agent_plans.filter((p) => p.agent_type === "analyzer").length;
+  const totalPapersToAnalyze =
+    realtimeTotalPapers !== undefined && realtimeTotalPapers > 0
+      ? realtimeTotalPapers
+      : project.total_papers_found;
 
   let progress = 0;
   let progressText = "Initializing...";
@@ -121,7 +128,15 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     "analyzing",
     "synthesizing",
   ].includes(project.status);
-  useProjectStatusPoller(isProcessing ? project.id : undefined);
+
+  // Use WebSocket for real-time updates instead of polling
+  // The hook automatically updates the project store with real-time data
+  const {
+    papersAnalyzed: realtimePapersAnalyzed,
+    totalPapers: realtimeTotalPapers,
+  } = useProjectStream(isProcessing ? project.id : undefined, {
+    autoReconnect: true,
+  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -299,7 +314,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
           </Box>
 
           {/* Progress Section (only during processing) */}
-          {isProcessing && <ProgressTracker project={project} />}
+          {isProcessing && (
+            <ProgressTracker
+              project={project}
+              realtimePapersAnalyzed={realtimePapersAnalyzed}
+              realtimeTotalPapers={realtimeTotalPapers}
+            />
+          )}
         </CardContent>
 
         <Divider />

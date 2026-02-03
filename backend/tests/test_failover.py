@@ -321,20 +321,23 @@ class TestNewFailoverFeatures:
         # So it falls back to finding any available model
         assert decision3.was_failover
 
-    def test_skip_cooldown_for_preemptive_switches(self):
-        """Preemptive switches should not penalize the model."""
+    def test_preemptive_cooldown_for_tpm_approaching(self):
+        """Preemptive switches should apply a short cooldown to prevent immediate retry."""
         manager = ModelFailoverManager()
 
         decision = manager.handle_failure(
             model="llama-3.1-8b-instant",
             reason=FailoverReason.TPM_APPROACHING,
-            skip_cooldown=True,
+            preemptive_cooldown=True,
         )
 
-        # Model should NOT be in cooldown
+        # Model SHOULD be in cooldown (with short preemptive duration)
         state = manager._cooldown_states["llama-3.1-8b-instant"]
-        assert not state.is_in_cooldown()
+        assert state.is_in_cooldown()
         assert decision.was_failover
+        # Cooldown should be PREEMPTIVE_COOLDOWN (15s)
+        assert state.cooldown_until > time.time()
+        assert state.cooldown_until <= time.time() + manager.PREEMPTIVE_COOLDOWN + 1
 
     def test_tpm_approaching_triggers_preemptive_switch(self):
         """TPM approaching should trigger switch to next model."""
@@ -343,7 +346,7 @@ class TestNewFailoverFeatures:
         decision = manager.handle_failure(
             model="llama-3.1-8b-instant",
             reason=FailoverReason.TPM_APPROACHING,
-            skip_cooldown=True,
+            preemptive_cooldown=True,
         )
 
         assert decision.selected_model == "llama-3.3-70b-versatile"
@@ -545,3 +548,116 @@ class TestWaitForModel:
         assert elapsed <= 5.0  # Some buffer for timing
         # Should fall back to get_available_model which picks shortest cooldown
         assert decision.selected_model is not None
+
+
+class TestGetModelForSynthesis:
+    """Tests for get_model_for_synthesis method - prefers higher quality models."""
+
+    def test_get_model_for_synthesis_prefers_70b_when_available(self):
+        """Should prefer llama-70b for synthesis tasks."""
+        manager = ModelFailoverManager()
+
+        decision = manager.get_model_for_synthesis(prompt_tokens=1000)
+
+        # Should prefer 70b for synthesis
+        assert decision.selected_model == "llama-3.3-70b-versatile"
+        assert not decision.was_failover
+
+    def test_get_model_for_synthesis_falls_back_to_qwen(self):
+        """Should fall back to qwen when 70b is unavailable."""
+        manager = ModelFailoverManager()
+
+        # Put 70b in cooldown
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 120.0
+
+        decision = manager.get_model_for_synthesis(prompt_tokens=1000, max_wait_seconds=1.0)
+
+        # Should use qwen as next best option
+        assert decision.selected_model == "qwen/qwen3-32b"
+        assert decision.was_failover
+
+    def test_get_model_for_synthesis_uses_8b_as_last_resort(self):
+        """Should only use 8b for synthesis when all others unavailable."""
+        manager = ModelFailoverManager()
+
+        # Put 70b and qwen in cooldown
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 120.0
+        manager._cooldown_states["qwen/qwen3-32b"].cooldown_until = time.time() + 120.0
+
+        decision = manager.get_model_for_synthesis(prompt_tokens=1000, max_wait_seconds=1.0)
+
+        # Should use 8b as last resort
+        assert decision.selected_model == "llama-3.1-8b-instant"
+        assert decision.was_failover
+
+    def test_get_model_for_synthesis_waits_for_short_cooldown(self):
+        """Should wait briefly if ALL synthesis models are in cooldown with short wait."""
+        manager = ModelFailoverManager()
+
+        # Put ALL synthesis models in short cooldown (≤5s triggers wait)
+        manager._cooldown_states["llama-3.3-70b-versatile"].cooldown_until = time.time() + 3.0
+        manager._cooldown_states["qwen/qwen3-32b"].cooldown_until = time.time() + 4.0
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = time.time() + 5.0
+
+        start = time.time()
+        decision = manager.get_model_for_synthesis(prompt_tokens=1000, max_wait_seconds=10.0)
+        elapsed = time.time() - start
+
+        # Should have waited for 70b (shortest wait, highest priority) to become available
+        assert decision.selected_model == "llama-3.3-70b-versatile"
+        assert elapsed >= 3.0  # Waited for cooldown
+
+
+class TestCheckAndClearExpiredCooldowns:
+    """Tests for _check_and_clear_expired_cooldowns method."""
+
+    def test_clears_expired_cooldowns(self):
+        """Should clear cooldowns that have expired."""
+        manager = ModelFailoverManager()
+
+        # Set expired cooldowns
+        past_time = time.time() - 10  # 10 seconds ago
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = past_time
+        manager._cooldown_states["llama-3.1-8b-instant"].last_failure_time = past_time - 60
+        manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures = 3
+
+        with manager._lock:
+            cleared = manager._check_and_clear_expired_cooldowns()
+
+        # Should have cleared the cooldown
+        assert cleared >= 1
+        assert manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until == 0.0
+        # Consecutive failures should be reset (last failure was >30s ago)
+        assert manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures == 0
+
+    def test_preserves_active_cooldowns(self):
+        """Should not clear cooldowns that are still active."""
+        manager = ModelFailoverManager()
+
+        # Set active cooldown
+        future_time = time.time() + 30
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = future_time
+        manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures = 2
+
+        with manager._lock:
+            cleared = manager._check_and_clear_expired_cooldowns()
+
+        # Should not have cleared active cooldown
+        assert manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until == future_time
+        assert manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures == 2
+
+    def test_keeps_failure_count_for_recent_failures(self):
+        """Should keep consecutive_failures if last failure was recent."""
+        manager = ModelFailoverManager()
+
+        # Set expired cooldown but recent failure
+        past_time = time.time() - 5  # 5 seconds ago (within 30s window)
+        manager._cooldown_states["llama-3.1-8b-instant"].cooldown_until = past_time
+        manager._cooldown_states["llama-3.1-8b-instant"].last_failure_time = time.time() - 10
+        manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures = 2
+
+        with manager._lock:
+            manager._check_and_clear_expired_cooldowns()
+
+        # Consecutive failures should be preserved (last failure within 30s)
+        assert manager._cooldown_states["llama-3.1-8b-instant"].consecutive_failures == 2

@@ -77,9 +77,12 @@ class ModelFailoverManager:
     """
 
     # Cooldown durations in seconds
-    BASE_COOLDOWN = 30.0  # Base cooldown after rate limit
-    MAX_COOLDOWN = 300.0  # Maximum cooldown (5 minutes)
-    COOLDOWN_MULTIPLIER = 2.0  # Exponential backoff multiplier
+    # IMPORTANT: Groq rate limits reset every 60 seconds (per model).
+    # The `retry-after` header typically shows 2-60 seconds.
+    # Keep cooldowns SHORT to allow quick model cycling.
+    BASE_COOLDOWN = 10.0  # Base cooldown after rate limit (was 30s, now 10s)
+    MAX_COOLDOWN = 60.0  # Max cooldown = Groq's 1-minute reset window (was 300s)
+    COOLDOWN_MULTIPLIER = 1.5  # Gentler backoff since we cycle models (was 2.0)
 
     # Failover chains: what model to use when the primary fails
     # Key: (original_model, failure_reason) -> fallback_model
@@ -116,11 +119,23 @@ class ModelFailoverManager:
     }
 
     # Model priority order for general selection
+    # Note: For synthesis/summarization, prefer 70b and qwen over 8b
     MODEL_PRIORITY = [
-        "llama-3.1-8b-instant",  # Highest priority (best rate limits)
-        "llama-3.3-70b-versatile",  # Powerful but limited quota
-        "qwen/qwen3-32b",  # Fallback option
+        "llama-3.1-8b-instant",  # Highest priority (best rate limits) for simple tasks
+        "llama-3.3-70b-versatile",  # Powerful - use for complex tasks
+        "qwen/qwen3-32b",  # Good quality fallback
     ]
+
+    # Models preferred for synthesis tasks (need better quality/larger context)
+    SYNTHESIS_MODEL_PRIORITY = [
+        "llama-3.3-70b-versatile",  # Best for synthesis (12K TPM)
+        "qwen/qwen3-32b",  # Good quality alternative
+        "llama-3.1-8b-instant",  # Last resort for synthesis
+    ]
+
+    # Cooldown for preemptive switches (when TPM approaching, not actual 429)
+    # This prevents immediately retrying the same model on the next request
+    PREEMPTIVE_COOLDOWN = 15.0  # 15 seconds - gives other models priority
 
     def __init__(self):
         """Initialize the failover manager."""
@@ -132,6 +147,136 @@ class ModelFailoverManager:
             self._cooldown_states[model_name] = ModelCooldownState(model_name=model_name)
 
         logger.info("ModelFailoverManager initialized with models: %s", self.MODEL_PRIORITY)
+
+    def _check_and_clear_expired_cooldowns(self) -> int:
+        """
+        Check all models and clear expired cooldowns.
+
+        This ensures models become available again once their rate limit window passes.
+        Groq rate limits reset every 60 seconds, so this is critical for model cycling.
+
+        Returns:
+            Number of models that became available
+        """
+        cleared_count = 0
+        current_time = time.time()
+
+        for model_name, state in self._cooldown_states.items():
+            if state.cooldown_until > 0 and current_time >= state.cooldown_until:
+                # Cooldown expired - model is available again
+                logger.info(
+                    f"Model {model_name} cooldown expired, marking as available "
+                    f"(was in cooldown for {state.last_failure_reason.value if state.last_failure_reason else 'unknown'} reason)"
+                )
+                state.cooldown_until = 0.0
+                # Reset consecutive failures to give model a fresh start
+                # (keep count if last failure was recent - within 30 seconds)
+                if current_time - state.last_failure_time > 30:
+                    state.consecutive_failures = 0
+                cleared_count += 1
+
+        return cleared_count
+
+    def get_model_for_synthesis(
+        self,
+        prompt_tokens: int = 0,
+        max_wait_seconds: float = 30.0,
+    ) -> FailoverDecision:
+        """
+        Get the best available model for synthesis tasks.
+
+        Synthesis tasks require higher quality output, so we prefer:
+        1. llama-3.3-70b-versatile (best quality, 12K TPM)
+        2. qwen/qwen3-32b (good quality alternative)
+        3. llama-3.1-8b-instant (last resort)
+
+        This method will wait briefly for a good model rather than immediately
+        falling back to 8b.
+
+        Args:
+            prompt_tokens: Estimated tokens in the prompt
+            max_wait_seconds: Maximum time to wait for a good model
+
+        Returns:
+            FailoverDecision with the selected model
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait_seconds:
+            with self._lock:
+                # First, clear any expired cooldowns
+                self._check_and_clear_expired_cooldowns()
+
+                # Try synthesis-preferred models in order
+                for model_name in self.SYNTHESIS_MODEL_PRIORITY:
+                    state = self._cooldown_states.get(model_name)
+
+                    if state and not state.is_in_cooldown():
+                        # Check context window
+                        model_config = self._get_model_config(model_name)
+                        if model_config and prompt_tokens > 0:
+                            if prompt_tokens > model_config.context_window * 0.9:
+                                continue  # Model can't handle this prompt size
+
+                        logger.info(f"Selected {model_name} for synthesis task")
+                        return FailoverDecision(
+                            original_model=self.SYNTHESIS_MODEL_PRIORITY[0],
+                            selected_model=model_name,
+                            reason="Best available model for synthesis",
+                            was_failover=model_name != self.SYNTHESIS_MODEL_PRIORITY[0],
+                        )
+
+                # All models in cooldown - find shortest wait
+                shortest_wait = float("inf")
+                for model_name in self.SYNTHESIS_MODEL_PRIORITY:
+                    state = self._cooldown_states.get(model_name)
+                    if state:
+                        remaining = state.remaining_cooldown()
+                        shortest_wait = min(shortest_wait, remaining)
+
+            # If shortest wait is very short, wait for it
+            if shortest_wait <= 5.0:
+                logger.info(f"Waiting {shortest_wait:.1f}s for model to become available")
+                time.sleep(min(shortest_wait + 0.5, 5.0))
+            else:
+                # Wait a bit and check again (models might recover)
+                time.sleep(2.0)
+
+        # Timeout - return whatever is available
+        with self._lock:
+            self._check_and_clear_expired_cooldowns()
+
+            # Return best available or shortest wait
+            for model_name in self.SYNTHESIS_MODEL_PRIORITY:
+                state = self._cooldown_states.get(model_name)
+                if state and not state.is_in_cooldown():
+                    return FailoverDecision(
+                        original_model=self.SYNTHESIS_MODEL_PRIORITY[0],
+                        selected_model=model_name,
+                        reason="Best available after timeout",
+                        was_failover=True,
+                    )
+
+            # All still in cooldown - return shortest wait model
+            shortest_wait = float("inf")
+            best_model = self.SYNTHESIS_MODEL_PRIORITY[0]
+            for model_name in self.SYNTHESIS_MODEL_PRIORITY:
+                state = self._cooldown_states.get(model_name)
+                if state and state.remaining_cooldown() < shortest_wait:
+                    shortest_wait = state.remaining_cooldown()
+                    best_model = model_name
+
+            logger.warning(
+                f"All synthesis models in cooldown after {max_wait_seconds}s wait. "
+                f"Using {best_model} (cooldown: {shortest_wait:.1f}s remaining)"
+            )
+            return FailoverDecision(
+                original_model=self.SYNTHESIS_MODEL_PRIORITY[0],
+                selected_model=best_model,
+                reason="All models in cooldown, using shortest wait",
+                was_failover=True,
+                cooldown_remaining=shortest_wait,
+            )
 
     def get_available_model(
         self,
@@ -149,6 +294,9 @@ class ModelFailoverManager:
             FailoverDecision with the selected model
         """
         with self._lock:
+            # First, clear any expired cooldowns to ensure accurate availability
+            self._check_and_clear_expired_cooldowns()
+
             # Check if preferred model is available
             state = self._cooldown_states.get(preferred_model)
             if state and not state.is_in_cooldown():
@@ -226,6 +374,7 @@ class ModelFailoverManager:
         reason: FailoverReason,
         retry_after: float | None = None,
         skip_cooldown: bool = False,
+        preemptive_cooldown: bool = False,
     ) -> FailoverDecision:
         """
         Handle a model failure and determine the next model to use.
@@ -238,6 +387,7 @@ class ModelFailoverManager:
             reason: Reason for failure
             retry_after: Server-suggested retry time (from headers)
             skip_cooldown: If True, don't put model in cooldown (for preemptive switches)
+            preemptive_cooldown: If True, apply short cooldown (for TPM approaching)
 
         Returns:
             FailoverDecision with the fallback model to use.
@@ -255,7 +405,10 @@ class ModelFailoverManager:
             state.last_failure_time = time.time()
 
             # Calculate cooldown duration - shorter for rate limits since we have alternatives
-            if skip_cooldown:
+            if preemptive_cooldown:
+                # Preemptive switch - use short cooldown so model isn't immediately retried
+                cooldown_duration = self.PREEMPTIVE_COOLDOWN
+            elif skip_cooldown:
                 cooldown_duration = 0.0
             elif retry_after and retry_after > 0:
                 # Use server suggestion but cap it - we have other models!
@@ -268,7 +421,8 @@ class ModelFailoverManager:
                     self.MAX_COOLDOWN,
                 )
 
-            if not skip_cooldown:
+            # Set cooldown unless explicitly skipped (preemptive_cooldown DOES set cooldown)
+            if not skip_cooldown or preemptive_cooldown:
                 state.cooldown_until = time.time() + cooldown_duration
 
             logger.warning(
@@ -397,6 +551,9 @@ class ModelFailoverManager:
 
         while elapsed < max_wait_seconds:
             with self._lock:
+                # Clear expired cooldowns before checking
+                self._check_and_clear_expired_cooldowns()
+
                 # Check if preferred model is available
                 state = self._cooldown_states.get(preferred_model)
                 if state and not state.is_in_cooldown():
@@ -434,6 +591,9 @@ class ModelFailoverManager:
             ]
 
             with self._lock:
+                # Clear expired cooldowns again before checking alternatives
+                self._check_and_clear_expired_cooldowns()
+
                 for model_name in priority_for_critical:
                     if model_name == preferred_model:
                         continue
@@ -469,6 +629,9 @@ class ModelFailoverManager:
         reason: FailoverReason,
     ) -> FailoverDecision:
         """Find any available model when specific failover rules don't apply."""
+        # Clear expired cooldowns first - this is critical for model cycling!
+        self._check_and_clear_expired_cooldowns()
+
         for model_name in self.MODEL_PRIORITY:
             if model_name == failed_model:
                 continue

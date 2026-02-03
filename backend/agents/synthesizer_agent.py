@@ -220,10 +220,10 @@ class SynthesisExecutorAgent(ToolEnabledAgent):
         Writing Style: Academic, formal, suitable for {academic_level} level
         Target Length: {word_count} words
         OUTPUT FORMAT:
-        1. Section Introduction: Overview of topic and scope
+        1. Introduction: Overview of topic and scope
         2. Thematic Organization: Group findings by themes/approaches
         3. Critical Analysis: Compare/contrast findings, identify patterns
         4. Research Gaps: Highlight limitations and future directions
-        5. Section Conclusion: Synthesize key takeaways
+        5. Conclusion: Synthesize key takeaways
         6. DON'T include References section in the end"""
         return self.llm_client.chat(prompt)

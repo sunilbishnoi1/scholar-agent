@@ -199,6 +199,6 @@ class PaperAnalyzerAgent(ToolEnabledAgent):
             "key_quotes": ["Quote 1...", "Quote 2..."]
         }}
         
-        Now, provide the analysis for the given paper in this exact JSON format.
+        CRITICAL: Output ONLY the JSON object. Do NOT include any preamble text (like "Here's the analysis" or "Here is the JSON"), explanations, or markdown code blocks. Start your response directly with {{ and end with }}.
         """
         return self.llm_client.chat(prompt)

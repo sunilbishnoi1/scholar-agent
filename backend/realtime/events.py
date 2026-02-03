@@ -206,7 +206,7 @@ async def broadcast_agent_update(project_id: str, event: AgentEvent, use_redis: 
     # Also publish to Redis for distributed deployments
     if use_redis:
         try:
-            from cache import get_cache
+            from cache.redis_cache import get_cache
 
             cache = get_cache()
             channel = f"project:{project_id}:updates"
@@ -223,15 +223,29 @@ def sync_broadcast_agent_update(project_id: str, event: AgentEvent):
     broadcast to connected clients.
     """
     try:
-        from cache import get_cache
+        # Import redis cache - this runs in Celery worker context
+        # where the working directory is /app and cache/ is a subdirectory
+        import os
+        import sys
+
+        # Ensure /app is in path for Celery workers
+        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if app_dir not in sys.path:
+            sys.path.insert(0, app_dir)
+
+        from cache.redis_cache import get_cache
 
         cache = get_cache()
+        if not cache or not cache.is_connected:
+            logger.warning(f"Redis cache not connected, skipping broadcast for {project_id}")
+            return
+
         channel = f"project:{project_id}:updates"
         event_dict = event.to_dict()
         cache.publish(channel, event_dict)
-        logger.debug(f"Published event to {channel}: {event.type}")
+        logger.info(f"Broadcast event to {channel}: {event.type}")
     except Exception as e:
-        logger.warning(f"Failed to broadcast event: {e}")
+        logger.warning(f"Failed to broadcast event: {e}", exc_info=True)
 
 
 # =========================================================================
@@ -355,11 +369,28 @@ class AgentProgressTracker:
         )
         sync_broadcast_agent_update(self.project_id, event)
 
-    def paper_analyzed(self, title: str, relevance_score: float = None):
-        """Notify that a paper was analyzed."""
+    def paper_analyzed(
+        self,
+        title: str,
+        relevance_score: float = None,
+        current: int = None,
+        total: int = None,
+    ):
+        """Notify that a paper was analyzed.
+
+        Args:
+            title: Paper title
+            relevance_score: Relevance score from analyzer
+            current: Current paper number being analyzed (1-indexed)
+            total: Total papers to analyze
+        """
         data = {}
         if relevance_score is not None:
             data["relevance_score"] = relevance_score
+        if current is not None:
+            data["current"] = current
+        if total is not None:
+            data["total"] = total
 
         event = create_paper_event(
             project_id=self.project_id,

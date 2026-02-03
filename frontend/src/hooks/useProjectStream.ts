@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useProjectStore } from '../store/projectStore';
+import type { ResearchProject } from '../types';
 
 // Event types from backend
 export type EventType =
@@ -49,6 +51,10 @@ export interface UseProjectStreamReturn {
     progress: number;
     /** Latest log messages */
     logs: string[];
+    /** Number of papers analyzed (from real-time events) */
+    papersAnalyzed: number;
+    /** Total papers to analyze (from real-time events) */
+    totalPapers: number;
     /** Manually connect to WebSocket */
     connect: () => void;
     /** Manually disconnect from WebSocket */
@@ -86,6 +92,8 @@ export function useProjectStream(
     const [currentAgent, setCurrentAgent] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
     const [logs, setLogs] = useState<string[]>([]);
+    const [papersAnalyzed, setPapersAnalyzed] = useState(0);
+    const [totalPapers, setTotalPapers] = useState(0);
 
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttemptsRef = useRef(0);
@@ -93,12 +101,15 @@ export function useProjectStream(
     const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const queryClient = useQueryClient();
+    const { updateProjectStatus } = useProjectStore();
 
     const clearUpdates = useCallback(() => {
         setUpdates([]);
         setLogs([]);
         setProgress(0);
         setCurrentAgent(null);
+        setPapersAnalyzed(0);
+        setTotalPapers(0);
     }, []);
 
     const disconnect = useCallback(() => {
@@ -163,6 +174,17 @@ export function useProjectStream(
                     case 'status':
                         if (update.agent) {
                             setCurrentAgent(update.agent);
+                            // Map agent names to project statuses
+                            const statusMap: Record<string, ResearchProject['status']> = {
+                                planner: 'planning',
+                                retriever: 'searching',
+                                analyzer: 'analyzing',
+                                synthesizer: 'synthesizing',
+                            };
+                            const newStatus = statusMap[update.agent];
+                            if (newStatus && projectId) {
+                                updateProjectStatus(projectId, newStatus);
+                            }
                         }
                         break;
 
@@ -178,9 +200,32 @@ export function useProjectStream(
 
                     case 'log':
                     case 'paper_found':
+                        if (update.message) {
+                            setLogs((prev) => [...prev.slice(-49), update.message!]);
+                        }
+                        // Track total papers from retriever
+                        if (update.type === 'paper_found' && update.data?.total) {
+                            setTotalPapers(update.data.total as number);
+                        }
+                        // Also update progress if provided
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
                     case 'paper_analyzed':
                         if (update.message) {
                             setLogs((prev) => [...prev.slice(-49), update.message!]);
+                        }
+                        // Update papers analyzed count from data if available, otherwise increment
+                        if (update.data?.current !== undefined) {
+                            setPapersAnalyzed(update.data.current as number);
+                        } else {
+                            setPapersAnalyzed((prev) => prev + 1);
+                        }
+                        // Update total papers from paper_analyzed event
+                        if (update.data?.total !== undefined) {
+                            setTotalPapers(update.data.total as number);
                         }
                         // Also update progress if provided
                         if (typeof update.progress === 'number') {
@@ -191,6 +236,10 @@ export function useProjectStream(
                     case 'complete':
                         setProgress(100);
                         setCurrentAgent(null);
+                        // Update project status to completed
+                        if (projectId) {
+                            updateProjectStatus(projectId, 'completed');
+                        }
                         // Invalidate project query to refresh data
                         queryClient.invalidateQueries({ queryKey: ['project', projectId] });
                         queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -198,6 +247,10 @@ export function useProjectStream(
 
                     case 'error':
                         setCurrentAgent(null);
+                        // Update project status to error
+                        if (projectId) {
+                            updateProjectStatus(projectId, 'error');
+                        }
                         // Invalidate project query to show error state
                         queryClient.invalidateQueries({ queryKey: ['project', projectId] });
                         queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -229,7 +282,7 @@ export function useProjectStream(
         ws.onerror = (error) => {
             console.error('[WebSocket] Error:', error);
         };
-    }, [projectId, token, autoReconnect, reconnectDelay, maxReconnectAttempts, queryClient]);
+    }, [projectId, token, autoReconnect, reconnectDelay, maxReconnectAttempts, queryClient, updateProjectStatus]);
 
     // Connect when projectId changes
     useEffect(() => {
@@ -247,6 +300,8 @@ export function useProjectStream(
         currentAgent,
         progress,
         logs,
+        papersAnalyzed,
+        totalPapers,
         connect,
         disconnect,
         clearUpdates,

@@ -101,11 +101,11 @@ class SynthesisExecutorAgent:
         Writing Style: Academic, formal, suitable for {academic_level} level
         Target Length: {word_count} words
         OUTPUT FORMAT:
-        1. Section Introduction: Overview of topic and scope
+        1. Introduction: Overview of topic and scope
         2. Thematic Organization: Group findings by themes/approaches
         3. Critical Analysis: Compare/contrast findings, identify patterns
         4. Research Gaps: Highlight limitations and future directions
-        5. Section Conclusion: Synthesize key takeaways
+        5. Conclusion: Synthesize key takeaways
         6. DON'T include References section in the end
 
         Analyzed Papers:
@@ -140,7 +140,10 @@ class SynthesisExecutorAgent:
                     f"{' (critical priority)' if is_final_synthesis else ''}"
                 )
                 # Use critical_priority for final synthesis to wait for powerful model
-                return self.llm_client.chat(prompt, critical_priority=is_final_synthesis)
+                # Also use task_type="synthesis" to prefer higher-quality models
+                return self.llm_client.chat(
+                    prompt, task_type="synthesis", critical_priority=is_final_synthesis
+                )
             except Exception as e:
                 error_str = str(e).lower()
                 if "413" in str(e) or "payload" in error_str or "too large" in error_str:
@@ -261,6 +264,7 @@ class SynthesisExecutorAgent:
         Summarize a chunk of paper analyses into key findings.
 
         This method ensures the chunk fits within token limits before sending.
+        Uses task_type="summarization" to prefer higher-quality models (llama-70b, qwen).
         """
         base_prompt = f"""Summarize the key findings from these paper analyses related to "{subtopic}".
         Focus on: main contributions, methodologies, key results, and limitations.
@@ -288,7 +292,8 @@ class SynthesisExecutorAgent:
         prompt = base_prompt + current_chunk
 
         try:
-            return self.llm_client.chat(prompt)
+            # Use task_type="summarization" to prefer higher-quality models
+            return self.llm_client.chat(prompt, task_type="summarization")
         except Exception as e:
             error_str = str(e).lower()
             if "413" in str(e) or "payload" in error_str or "too large" in error_str:
@@ -297,7 +302,7 @@ class SynthesisExecutorAgent:
                 reduced_chunk = current_chunk[: len(current_chunk) // 2]
                 reduced_chunk += "\n\n[Content truncated to fit limits...]"
                 reduced_prompt = base_prompt + reduced_chunk
-                return self.llm_client.chat(reduced_prompt)
+                return self.llm_client.chat(reduced_prompt, task_type="summarization")
             raise
 
     def _synthesize_with_summary(
@@ -310,6 +315,7 @@ class SynthesisExecutorAgent:
         It guarantees completion by using aggressive truncation.
 
         For final synthesis, we still use critical_priority to wait for a powerful model.
+        All summarization uses task_type="summarization" to prefer higher-quality models.
         """
         # Calculate maximum content we can include in summary request
         summary_template_tokens = 200  # Estimated
@@ -331,7 +337,8 @@ class SynthesisExecutorAgent:
         logger.info(f"Summary fallback: using ~{self._estimate_tokens(summary_prompt)} tokens")
 
         try:
-            summary = self.llm_client.chat(summary_prompt)
+            # Use task_type="summarization" to prefer higher-quality models
+            summary = self.llm_client.chat(summary_prompt, task_type="summarization")
         except Exception as e:
             # Even summary failed - use ultra-minimal approach
             logger.error(f"Summary request failed: {e}. Using minimal summary.")
@@ -351,11 +358,11 @@ class SynthesisExecutorAgent:
         Writing Style: Academic, formal, suitable for {academic_level} level
         Target Length: {word_count} words
         OUTPUT FORMAT:
-        1. Section Introduction: Overview of topic and scope
+        1. Introduction: Overview of topic and scope
         2. Thematic Organization: Group findings by themes/approaches
         3. Critical Analysis: Compare/contrast findings, identify patterns
         4. Research Gaps: Highlight limitations and future directions
-        5. Section Conclusion: Synthesize key takeaways
+        5. Conclusion: Synthesize key takeaways
         6. DON'T include References section in the end
 
         Research Summary:
@@ -368,7 +375,10 @@ class SynthesisExecutorAgent:
 
         try:
             # Use critical_priority for final synthesis to wait for powerful model
-            return self.llm_client.chat(synthesis_prompt, critical_priority=is_final_synthesis)
+            # Also pass task_type="synthesis" for better model selection
+            return self.llm_client.chat(
+                synthesis_prompt, task_type="synthesis", critical_priority=is_final_synthesis
+            )
         except Exception as e:
             # Complete failure - return the summary as the final output
             logger.error(f"Final synthesis failed: {e}. Returning summary as output.")

@@ -33,8 +33,9 @@ class MockWebSocket {
     });
   }
 
-  send(_data: string) {
-    // Mock send
+  send(data: string) {
+    // Mock send - use data to satisfy linter
+    console.debug("Mock send:", data);
   }
 
   close() {
@@ -98,7 +99,7 @@ describe("useProjectStream", () => {
     });
 
     it("should connect when projectId is provided", async () => {
-      const { result } = renderHook(() => useProjectStream("project-123"), {
+      renderHook(() => useProjectStream("project-123"), {
         wrapper,
       });
 
@@ -120,10 +121,9 @@ describe("useProjectStream", () => {
     });
 
     it("should disconnect when unmounted", async () => {
-      const { result, unmount } = renderHook(
-        () => useProjectStream("project-123"),
-        { wrapper },
-      );
+      const { unmount } = renderHook(() => useProjectStream("project-123"), {
+        wrapper,
+      });
 
       await waitFor(() => {
         expect(MockWebSocket.instances).toHaveLength(1);

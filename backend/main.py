@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 import markdown
 from celery import Celery
 from dotenv import load_dotenv
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -51,6 +54,18 @@ def create_db_and_tables():
     except Exception as e:
         logging.error(f"Error during database initialization: {e}", exc_info=True)
         raise
+
+
+async def start_redis_listener():
+    """Start Redis pub/sub listener for WebSocket broadcasts."""
+    try:
+        from realtime.manager import get_connection_manager
+
+        manager = get_connection_manager()
+        await manager.start_redis_listener()
+        logging.info("Redis listener started for WebSocket broadcasts")
+    except Exception as e:
+        logging.error(f"Failed to start Redis listener: {e}", exc_info=True)
 
 
 def _is_postgresql() -> bool:
@@ -221,7 +236,7 @@ def _verify_schema():
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-app = FastAPI(on_startup=[create_db_and_tables])
+app = FastAPI(on_startup=[create_db_and_tables, start_redis_listener])
 celery_app = Celery("literature_agent", broker=REDIS_URL)
 
 origins = [
@@ -626,6 +641,78 @@ def semantic_search(
 app.include_router(search_router, prefix="/api", tags=["Search"])
 
 
+# --- WebSocket Router ---
+from fastapi import WebSocket, WebSocketDisconnect
+
+from realtime.manager import get_connection_manager
+
+
+@app.websocket("/ws/projects/{project_id}/stream")
+async def websocket_project_stream(
+    websocket: WebSocket,
+    project_id: str,
+    token: str | None = None,
+):
+    """
+    WebSocket endpoint for real-time project updates.
+
+    Streams agent progress, status changes, and completion events.
+    Replaces polling for better UX and reduced server load.
+    """
+    manager = get_connection_manager()
+
+    # For now, use a simple authentication (TODO: proper JWT validation)
+    # If token is provided, validate it; otherwise use anonymous user
+    user_id = "anonymous"  # TODO: Extract user_id from JWT token
+
+    connection_established = False
+
+    try:
+        # Connect and subscribe to project
+        success = await manager.connect(websocket, user_id, project_id)
+        if not success:
+            logger.warning(f"Failed to establish WebSocket connection for project {project_id}")
+            try:
+                await websocket.close(code=1008, reason="Connection failed")
+            except:
+                pass  # Connection may already be closed
+            return
+
+        connection_established = True
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Receive messages (ping/pong for keepalive)
+                data = await websocket.receive_text()
+
+                # Handle ping
+                if data == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket client disconnected for project {project_id}")
+                break
+            except RuntimeError as e:
+                # Handle "WebSocket is not connected" errors gracefully
+                logger.warning(f"WebSocket runtime error for project {project_id}: {e}")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error for project {project_id}: {e}", exc_info=True)
+                break
+
+    except Exception as e:
+        logger.error(f"WebSocket setup error for project {project_id}: {e}", exc_info=True)
+
+    finally:
+        # Clean up connection only if it was established
+        if connection_established:
+            try:
+                await manager.disconnect(websocket)
+            except Exception as e:
+                logger.error(f"Error during WebSocket cleanup: {e}")
+
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
@@ -707,6 +794,7 @@ def run_literature_review(self, project_id: str, max_papers: int):
     from agents.analyzer import PaperAnalyzerAgent
     from agents.llm import get_llm_client
     from agents.synthesizer import SynthesisExecutorAgent
+    from realtime.events import AgentProgressTracker
 
     # Create a fresh DB engine/session for this Celery worker process
     task_engine = create_engine(
@@ -723,6 +811,10 @@ def run_literature_review(self, project_id: str, max_papers: int):
     analyzer = PaperAnalyzerAgent(llm_client)
     synthesizer = SynthesisExecutorAgent(llm_client)
     retriever = PaperRetriever()
+
+    # Initialize progress tracker for real-time WebSocket updates
+    tracker = AgentProgressTracker(project_id)
+
     try:
         project = (
             db.query(ResearchProject)
@@ -733,20 +825,27 @@ def run_literature_review(self, project_id: str, max_papers: int):
         if not project:
             return {"status": "error", "error": "Project not found"}
 
+        # Start retriever agent
+        tracker.start_agent("retriever", "Searching for relevant papers...")
+
         # 1. Retrieve papers
         papers_to_analyze = retriever.search_papers(
             search_terms=project.keywords, max_papers=max_papers
         )
 
-        # --- MODIFIED BLOCK START ---
-        # Save the number of found papers so the frontend can display progress correctly.
+        # Save the number of found papers
         project.total_papers_found = len(papers_to_analyze)
         db.commit()
-        # --- MODIFIED BLOCK END ---
+
+        # Notify papers found
+        tracker.log(f"Found {len(papers_to_analyze)} papers")
+        tracker.update_progress(100)  # Retriever is done
+        tracker.complete_agent("retriever", f"Found {len(papers_to_analyze)} papers")
 
         if not papers_to_analyze:
             project.status = "error_no_papers_found"
             db.commit()
+            tracker.error("No papers found for the given search criteria")
             logging.warning(f"Could not retrieve any papers for project {project_id}.")
             return {
                 "status": "completed_with_warning",
@@ -756,9 +855,12 @@ def run_literature_review(self, project_id: str, max_papers: int):
         # 2. Analyze each retrieved paper
         project.status = "analyzing"
         db.commit()
+
+        tracker.start_agent("analyzer", "Analyzing papers...")
+
         paper_analyses = []
 
-        for _i, paper_data in enumerate(papers_to_analyze):
+        for i, paper_data in enumerate(papers_to_analyze):
             content = paper_data.get("abstract", "")
             if not content:
                 continue
@@ -770,8 +872,9 @@ def run_literature_review(self, project_id: str, max_papers: int):
             relevance_score = 0.0
             analysis_json = {}
             try:
-                clean_response = re.sub(r"```json\s*|\s*```", "", analyzer_response_str).strip()
-                analysis_json = json.loads(clean_response)
+                from agents.tools import extract_json_from_response
+
+                analysis_json = extract_json_from_response(analyzer_response_str, {})
                 relevance_score = float(analysis_json.get("relevance_score", 0.0))
             except (json.JSONDecodeError, TypeError) as e:
                 logging.error(
@@ -809,11 +912,29 @@ def run_literature_review(self, project_id: str, max_papers: int):
             db.commit()
             paper_analyses.append(analyzer_response_str)
 
+            # Update progress and notify paper analyzed
+            analyzed_count = i + 1
+            total_papers = len(papers_to_analyze)
+            progress_pct = (analyzed_count / total_papers) * 100
+            tracker.update_progress(
+                progress_pct, f"Analyzed {analyzed_count}/{total_papers} papers"
+            )
+            tracker.paper_analyzed(
+                paper_data["title"],
+                relevance_score,
+                current=analyzed_count,
+                total=total_papers,
+            )
+
             time.sleep(1.5)
+
+        tracker.complete_agent("analyzer", f"Analyzed {len(paper_analyses)} papers")
 
         # 3. Synthesizer logic
         project.status = "synthesizing"
         db.commit()
+
+        tracker.start_agent("synthesizer", "Synthesizing final report...")
 
         subtopic = project.subtopics[0] if project.subtopics else "Comprehensive Literature Review"
 
@@ -849,6 +970,9 @@ def run_literature_review(self, project_id: str, max_papers: int):
         project.status = "completed"
         db.commit()
 
+        tracker.complete_agent("synthesizer", "Synthesis complete")
+        tracker.complete(papers_analyzed=len(paper_analyses))
+
         # ---send email after completion---
 
         if project.user:
@@ -869,6 +993,10 @@ def run_literature_review(self, project_id: str, max_papers: int):
             f"An error occurred during literature review for project {project_id}: {e}",
             exc_info=True,
         )
+
+        # Notify error via tracker
+        tracker.error(f"Error: {e!s}")
+
         # Try to complete with partial results instead of failing completely
         try:
             project_to_update = (
