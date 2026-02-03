@@ -388,6 +388,7 @@ class TestLegacySynthesizer:
         assert mock_llm_client.chat.call_count >= 2
         assert "Synthesized result" in result
 
+
 # ============================================
 # QUALITY CHECKER AGENT TESTS
 # ============================================

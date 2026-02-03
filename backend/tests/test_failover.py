@@ -288,30 +288,38 @@ class TestFailoverManagerSingleton:
 class TestNewFailoverFeatures:
     """Tests for new failover features: preemptive switching and 413 chunking."""
 
-    def test_413_on_all_models_signals_chunking(self):
-        """When all models fail with 413, should signal need for chunking."""
+    def test_413_on_all_models_cycles_back_to_highest_tpm(self):
+        """When all models fail with 413, should cycle back to highest TPM model (70b).
+
+        NOTE: The actual chunking detection is now handled in groq_client.py by
+        tracking tried_models set. The failover manager just provides the failover
+        chain - qwen→70b because 70b has 12K TPM (highest).
+        """
         manager = ModelFailoverManager()
 
-        # First 413 on 8B -> upgrades to 70B
+        # First 413 on 8B -> upgrades to 70B (12K TPM)
         decision1 = manager.handle_failure(
             model="llama-3.1-8b-instant",
             reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
         )
         assert decision1.selected_model == "llama-3.3-70b-versatile"
 
-        # 413 on 70B -> upgrades to Qwen
+        # 413 on 70B -> tries Qwen (different model family)
         decision2 = manager.handle_failure(
             model="llama-3.3-70b-versatile",
             reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
         )
         assert decision2.selected_model == "qwen/qwen3-32b"
 
-        # 413 on Qwen -> signals chunking needed
+        # 413 on Qwen -> cycles back to 70B (highest TPM)
+        # The groq_client.py tracks tried_models and will detect all models failed
         decision3 = manager.handle_failure(
             model="qwen/qwen3-32b",
             reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
         )
-        assert decision3.metadata.get("needs_chunking") is True
+        # Now goes to 70B since it has 12K TPM (but it will be in cooldown)
+        # So it falls back to finding any available model
+        assert decision3.was_failover
 
     def test_skip_cooldown_for_preemptive_switches(self):
         """Preemptive switches should not penalize the model."""

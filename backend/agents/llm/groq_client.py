@@ -557,44 +557,72 @@ class GroqClient(BaseLLMClient):
             except NonRetryableError as e:
                 # Check if this is a failover-able error
                 if "413" in str(e) or "payload too large" in str(e).lower():
-                    # 413 error - try larger model
+                    # Track that this model failed with 413
+                    tried_models.add(current_model)
+
+                    # Check if we've tried ALL models with 413
+                    all_models = set(self.failover_manager.MODEL_PRIORITY)
+                    all_tried_with_413 = tried_models >= all_models
+
+                    if all_tried_with_413 and not all_models_tried_with_413:
+                        # All models failed with 413 - need to reduce payload
+                        logger.warning(
+                            f"All {len(all_models)} models failed with 413. "
+                            f"Attempting to reduce payload size."
+                        )
+                        reduced_prompt = self._reduce_prompt_size(original_prompt)
+                        if len(reduced_prompt) < len(prompt):
+                            logger.warning(
+                                f"Reducing prompt from ~{len(prompt)//4} to "
+                                f"~{len(reduced_prompt)//4} tokens"
+                            )
+                            prompt = reduced_prompt
+                            # Reset and try all models again with smaller prompt
+                            tried_models.clear()
+                            current_model = model  # Start with original model
+                            all_models_tried_with_413 = True
+                            attempt += 1
+                            continue
+                        else:
+                            # Can't reduce further - raise the error
+                            logger.error("Cannot reduce prompt further. Failing.")
+                            raise
+
+                    # 413 error - try model with higher TPM
                     failover = self.failover_manager.handle_failure(
                         model=current_model,
                         reason=FailoverReason.PAYLOAD_TOO_LARGE_413,
                     )
 
-                    # Check if we need to chunk/reduce payload
-                    if failover.metadata.get("needs_chunking"):
-                        if not all_models_tried_with_413:
-                            # Try reducing the prompt first
-                            reduced_prompt = self._reduce_prompt_size(original_prompt)
-                            if len(reduced_prompt) < len(prompt):
-                                logger.warning(
-                                    f"All models failed with 413, reducing prompt from "
-                                    f"~{len(prompt)//4} to ~{len(reduced_prompt)//4} tokens"
-                                )
-                                prompt = reduced_prompt
-                                # Reset and try all models again with smaller prompt
-                                tried_models.clear()
-                                current_model = model  # Start with original model
-                                all_models_tried_with_413 = True
-                                attempt += 1
-                                continue
-                            else:
-                                # Can't reduce further - raise the error
-                                raise
-                        else:
-                            # Already tried reducing - raise the error
-                            raise
-
-                    if failover.selected_model != current_model:
+                    # Check if failover gives us a different, untried model
+                    if (
+                        failover.selected_model != current_model
+                        and failover.selected_model not in tried_models
+                    ):
                         logger.info(
-                            f"413 error on {current_model}, failing over to {failover.selected_model}"
+                            f"413 error on {current_model}, failing over to "
+                            f"{failover.selected_model}"
                         )
                         current_model = failover.selected_model
                         attempt += 1
                         last_error = e
                         continue
+                    else:
+                        # Failover returned same model or already tried model
+                        # Try to find any untried model
+                        for m in self.failover_manager.MODEL_PRIORITY:
+                            if m not in tried_models:
+                                logger.info(f"413 error, trying next untried model: {m}")
+                                current_model = m
+                                attempt += 1
+                                last_error = e
+                                break
+                        else:
+                            # All models tried, will be caught in next iteration
+                            attempt += 1
+                            continue
+
+                    continue
 
                 # Not a failover-able error, re-raise
                 raise
@@ -688,11 +716,30 @@ class GroqClient(BaseLLMClient):
 
         Raises:
             PreemptiveSwitchNeeded: If rate limits suggest switching models
+            NonRetryableError: If prompt is too large for the model's TPM limit
         """
 
         # Estimate tokens for rate limiting
         max_response_tokens = min(kwargs.get("max_tokens", 1024), 1024)
         estimated_tokens = len(prompt) // 4 + max_response_tokens
+
+        # Get TPM limit for this model (with safety margin already applied)
+        model_limits = self.rate_limiter.get_limits(model)
+        model_tpm = model_limits.get("tpm", 6000)
+
+        # PRE-VALIDATE: Check if prompt is too large for this model's TPM BEFORE sending
+        # This catches oversized prompts early and triggers failover to a model with higher limits
+        if estimated_tokens > model_tpm:
+            logger.warning(
+                f"Prompt too large for {model}: ~{estimated_tokens} tokens > {model_tpm} TPM. "
+                f"Will trigger failover to model with higher limits."
+            )
+            raise NonRetryableError(
+                f"Payload too large (413): Prompt has ~{estimated_tokens} tokens but {model} "
+                f"TPM limit is {model_tpm}. Consider reducing input size.",
+                category=ErrorCategory.VALIDATION,
+                severity="medium",
+            )
 
         # Check rate limits - DON'T WAIT, just check if we should switch
         _, should_switch = self.rate_limiter.wait_if_needed(model, estimated_tokens)
