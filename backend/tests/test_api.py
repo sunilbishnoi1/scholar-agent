@@ -132,23 +132,44 @@ def authenticated_client(setup_test_db, mock_user, mock_project):
 class TestAuthenticationEndpoints:
     """Tests for authentication API endpoints."""
 
-    def test_register_new_user_success(self, client, mock_db_session):
+    def test_register_new_user_success(self, mock_db_session):
         """Test successful user registration."""
-        with patch("main.get_db", return_value=iter([mock_db_session])):
-            with patch("db.get_db", return_value=iter([mock_db_session])):
-                mock_db_session.query.return_value.filter.return_value.first.return_value = None
+        from db import get_db
+        from main import app
 
-                response = client.post(
-                    "/api/auth/register",
-                    json={
-                        "email": "newuser@example.com",
-                        "password": "securepassword123",
-                        "name": "New User",
-                    },
-                )
+        # Override the dependency to use mock - must be a generator function
+        def override_get_db():
+            yield mock_db_session
 
-                # May succeed or fail based on db mock setup
-                assert response.status_code in [200, 201, 400, 500]
+        app.dependency_overrides[get_db] = override_get_db
+
+        # Mock: no existing user found
+        mock_db_session.query.return_value.filter.return_value.first.return_value = None
+
+        # Mock db operations - when refresh is called, set the id on the user
+        def mock_refresh(user):
+            if not hasattr(user, "id") or user.id is None:
+                user.id = "test-uuid-123"
+
+        mock_db_session.add = MagicMock()
+        mock_db_session.commit = MagicMock()
+        mock_db_session.refresh = mock_refresh
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@example.com",
+                "password": "securepassword123",
+                "name": "New User",
+            },
+        )
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        assert "id" in response.json()
+        assert response.json()["email"] == "newuser@example.com"
+        assert response.json()["name"] == "New User"
 
     def test_register_duplicate_email_fails(self, setup_test_db, mock_user):
         """Test that registering with existing email fails."""
@@ -203,37 +224,48 @@ class TestAuthenticationEndpoints:
         assert "access_token" in data
         assert data["token_type"] == "bearer"
 
-    def test_login_wrong_password_fails(self, client, mock_db_session, mock_user):
+    def test_login_wrong_password_fails(self, mock_db_session, mock_user):
         """Test login with wrong password fails."""
         import auth
+        from db import get_db
+        from main import app
 
         mock_user.hashed_password = auth.get_password_hash("correctpassword")
 
-        with patch("main.get_db", return_value=iter([mock_db_session])):
-            with patch("db.get_db", return_value=iter([mock_db_session])):
-                mock_db_session.query.return_value.filter.return_value.first.return_value = (
-                    mock_user
-                )
+        def override_get_db():
+            yield mock_db_session
 
-                response = client.post(
-                    "/api/auth/token",
-                    data={"username": mock_user.email, "password": "wrongpassword"},
-                )
+        app.dependency_overrides[get_db] = override_get_db
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
 
-                assert response.status_code == 401
+        client = TestClient(app)
+        response = client.post(
+            "/api/auth/token",
+            data={"username": mock_user.email, "password": "wrongpassword"},
+        )
 
-    def test_login_nonexistent_user_fails(self, client, mock_db_session):
+        app.dependency_overrides.clear()
+        assert response.status_code == 401
+
+    def test_login_nonexistent_user_fails(self, mock_db_session):
         """Test login with non-existent user fails."""
-        with patch("main.get_db", return_value=iter([mock_db_session])):
-            with patch("db.get_db", return_value=iter([mock_db_session])):
-                mock_db_session.query.return_value.filter.return_value.first.return_value = None
+        from db import get_db
+        from main import app
 
-                response = client.post(
-                    "/api/auth/token",
-                    data={"username": "nonexistent@example.com", "password": "password"},
-                )
+        def override_get_db():
+            yield mock_db_session
 
-                assert response.status_code == 401
+        app.dependency_overrides[get_db] = override_get_db
+        mock_db_session.query.return_value.filter.return_value.first.return_value = None
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/auth/token",
+            data={"username": "nonexistent@example.com", "password": "password"},
+        )
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 401
 
     def test_get_current_user_authenticated(self, authenticated_client, mock_user):
         """Test getting current user when authenticated."""
