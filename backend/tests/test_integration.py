@@ -33,8 +33,7 @@ def mock_gemini_client():
     """Create a mock Gemini client with realistic responses."""
     mock = Mock(spec=GeminiClient)
 
-    # Mock responses for different agent types
-    mock.chat = Mock(side_effect=lambda prompt: _get_mock_response(prompt))
+    mock.chat = Mock(side_effect=_get_mock_response)
 
     return mock
 

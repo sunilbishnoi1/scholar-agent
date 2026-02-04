@@ -7,7 +7,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class ErrorSeverity(str, Enum):
+class ErrorSeverity(StrEnum):
     """Error severity levels for prioritization and alerting."""
 
     LOW = "low"  # Transient, will likely succeed on retry
@@ -24,7 +24,7 @@ class ErrorSeverity(str, Enum):
     CRITICAL = "critical"  # System-level failure
 
 
-class ErrorCategory(str, Enum):
+class ErrorCategory(StrEnum):
     """Categories of errors for handling strategy."""
 
     RATE_LIMIT = "rate_limit"  # API rate limit exceeded
@@ -75,7 +75,7 @@ class CircuitBreaker:
     - HALF_OPEN: Testing if service recovered
     """
 
-    class State(str, Enum):
+    class State(StrEnum):
         CLOSED = "closed"
         OPEN = "open"
         HALF_OPEN = "half_open"

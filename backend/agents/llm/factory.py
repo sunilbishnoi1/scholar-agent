@@ -4,7 +4,7 @@
 
 import logging
 import os
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from agents.llm.base import BaseLLMClient, LLMConfig
@@ -12,7 +12,7 @@ from agents.llm.base import BaseLLMClient, LLMConfig
 logger = logging.getLogger(__name__)
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """Supported LLM providers."""
 
     GROQ = "groq"

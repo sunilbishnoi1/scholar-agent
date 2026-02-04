@@ -10,11 +10,11 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     """Log levels for structured logging."""
 
     DEBUG = "DEBUG"

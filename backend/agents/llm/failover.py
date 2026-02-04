@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from agents.llm.model_config import GROQ_MODELS, ModelConfig, ModelTier
@@ -17,7 +17,7 @@ from agents.llm.model_config import GROQ_MODELS, ModelConfig, ModelTier
 logger = logging.getLogger(__name__)
 
 
-class FailoverReason(str, Enum):
+class FailoverReason(StrEnum):
     """Reasons for model failover."""
 
     RATE_LIMIT_429 = "rate_limit_429"  # 429 Too Many Requests
