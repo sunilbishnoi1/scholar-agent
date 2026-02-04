@@ -3,10 +3,10 @@
 # This makes it easy to add new models or update pricing
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class ModelTier(str, Enum):
+class ModelTier(StrEnum):
     """
     Model tiers representing different cost/performance tradeoffs.
     Used by the router to select appropriate models for tasks.

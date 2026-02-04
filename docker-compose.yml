@@ -61,6 +61,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
       - ENVIRONMENT=development
+      - ALLOWED_ORIGINS=
     ports:
       - "8000:8000"
     depends_on:
@@ -90,6 +91,8 @@ services:
       - LLM_PROVIDER=groq
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ENVIRONMENT=development
+      - ALLOWED_ORIGINS=
     depends_on:
       postgres:
         condition: service_healthy

@@ -3,12 +3,12 @@
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
 
-class ModelTier(str, Enum):
+class ModelTier(StrEnum):
     """Available Gemini model tiers with different cost/performance tradeoffs."""
 
     FAST_CHEAP = "gemini-2.0-flash-lite"  # Simple tasks, lowest cost

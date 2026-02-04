@@ -5,11 +5,11 @@ import operator
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any, TypedDict
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     """Enumeration of agent types in the pipeline."""
 
     PLANNER = "planner"

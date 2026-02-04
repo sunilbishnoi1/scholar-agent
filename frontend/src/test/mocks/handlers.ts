@@ -7,7 +7,7 @@ const API_URL = 'http://localhost:8000/api'
 
 export const handlers = [
   // Auth endpoints
-  http.post(`${API_URL}/auth/register`, async ({ request }) => {
+  http.post(`${API_URL}/auth/register`, async ({ request }: { request: Request }) => {
     const body = await request.json() as { email: string; password: string; name: string }
     return HttpResponse.json({
       id: 'test-user-123',
@@ -61,7 +61,7 @@ export const handlers = [
     ])
   }),
 
-  http.get(`${API_URL}/projects/:id`, async ({ params }) => {
+  http.get(`${API_URL}/projects/:id`, async ({ params }: { params: Record<string, string> }) => {
     const { id } = params
     return HttpResponse.json({
       id,
@@ -87,7 +87,7 @@ export const handlers = [
     })
   }),
 
-  http.post(`${API_URL}/projects`, async ({ request }) => {
+  http.post(`${API_URL}/projects`, async ({ request }: { request: Request }) => {
     const body = await request.json() as { title: string; research_question: string }
     return HttpResponse.json({
       id: 'new-project-123',
@@ -103,7 +103,7 @@ export const handlers = [
     })
   }),
 
-  http.post(`${API_URL}/projects/:id/start`, async ({ params }) => {
+  http.post(`${API_URL}/projects/:id/start`, async ({ params }: { params: Record<string, string> }) => {
     const { id } = params
     return HttpResponse.json({
       job_id: 'job-123',

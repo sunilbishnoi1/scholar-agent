@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ResearchProject, ProjectCreate } from '../types';
-import { createProject as apiCreateProject, getProjects, deleteProject as apiDeleteProject } from '../api/client';
+import { getProjects, createProject, deleteProject } from '../api/client';
 import { toast } from 'react-toastify';
 
 interface ProjectState {
@@ -25,13 +25,12 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             const projects = await getProjects();
             set({ projects, isLoading: false });
         } catch {
-            const errorMessage = 'Failed to fetch projects.';
+            const errorMessage = 'Failed to fetch projects. Backend may be starting up.';
             set({ error: errorMessage, isLoading: false });
             toast.error(errorMessage);
         }
     },
     addProject: async (newProjectData) => {
-        // Create an optimistic project to show in the UI immediately.
         const optimisticProject: ResearchProject = {
             id: `temp-${Date.now()}`,
             title: newProjectData.title,
@@ -45,16 +44,12 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             total_papers_found: 0
         };
 
-        // Add the optimistic project to the state right away.
         set((state) => ({
             projects: [optimisticProject, ...state.projects],
         }));
 
         try {
-            // In the background, create the project on the server.
-            const newProject = await apiCreateProject(newProjectData);
-            
-            // Once successful, replace the optimistic project with the real one.
+            const newProject = await createProject(newProjectData);
             set((state) => ({
                 projects: state.projects.map((p) =>
                     p.id === optimisticProject.id ? newProject : p
@@ -63,9 +58,7 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             toast.success(`Project "${newProject.title}" created successfully!`);
         } catch (error) {
             console.error("Failed to create project:", error);
-            const errorMessage = "Failed to create project. Please check the connection to the backend.";
-            
-            // If it fails, remove the optimistic project from the list.
+            const errorMessage = "Failed to create project. Backend may be starting up.";
             set((state) => ({
                 projects: state.projects.filter((p) => p.id !== optimisticProject.id),
                 error: errorMessage
@@ -74,7 +67,6 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
         }
     },
     removeProject: async (projectId) => {
-        // Store project info for potential rollback
         const state = _get();
         const projectToDelete = state.projects.find((p) => p.id === projectId);
         
@@ -83,18 +75,16 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             return false;
         }
 
-        // Optimistically remove from UI
         set((state) => ({
             projects: state.projects.filter((p) => p.id !== projectId),
         }));
 
         try {
-            await apiDeleteProject(projectId);
+            await deleteProject(projectId);
             toast.success(`Project "${projectToDelete.title}" deleted successfully`);
             return true;
         } catch (error) {
             console.error("Failed to delete project:", error);
-            // Rollback: restore the project
             set((state) => ({
                 projects: [...state.projects, projectToDelete],
             }));

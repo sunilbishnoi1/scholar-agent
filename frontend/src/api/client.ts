@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { ResearchProject, ProjectCreate, User } from '../types';
-import { useAuthStore } from '../store/authStore';
+import { neonClient } from './neonClient';
 
 const apiClient = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000',
@@ -8,10 +8,10 @@ const apiClient = axios.create({
 
 // Interceptor to add the auth token to every request
 apiClient.interceptors.request.use(
-    (config) => {
-        const token = useAuthStore.getState().token;
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+    async (config) => {
+        const { data } = await neonClient.auth.getSession();
+        if (data?.session?.access_token) {
+            config.headers.Authorization = `Bearer ${data.session.access_token}`;
         }
         return config;
     },
@@ -20,7 +20,6 @@ apiClient.interceptors.request.use(
     }
 );
 
-// --- New Auth Types and Functions ---
 export interface LoginCredentials {
     username: string; // FastAPI's OAuth2 expects 'username'
     password: string;

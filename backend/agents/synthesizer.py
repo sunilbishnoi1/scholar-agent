@@ -107,7 +107,7 @@ class SynthesisExecutorAgent:
         4. Research Gaps: Highlight limitations and future directions
         5. Conclusion: Synthesize key takeaways
         6. DON'T include References section in the end
-
+        CRITICAL: Output ONLY the JSON object. Do NOT include any preamble text (like "Here's the analysis" or "Here is the JSON"), explanations, or markdown code blocks. Start your response directly with {{ and end with }}.
         Analyzed Papers:
         """
 
