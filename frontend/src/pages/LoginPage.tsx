@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
+import { useBackendWarmup } from "../hooks/useBackendWarmup";
 import {
   Container,
   Box,
@@ -8,11 +9,11 @@ import {
   Button,
   Typography,
   Paper,
-  // Grid has been removed from imports
   Avatar,
   useTheme,
   useMediaQuery,
   CircularProgress,
+  Divider,
 } from "@mui/material";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import MapIcon from "@mui/icons-material/Map";
@@ -31,7 +32,7 @@ const StepCard: React.FC<{
         textAlign: "center",
         px: 2,
         py: 3,
-        height: "100%", // Ensure cards in the same row have the same height
+        height: "100%",
         minHeight: 160,
         display: "flex",
         flexDirection: "column",
@@ -91,9 +92,11 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
-
+  const loginWithOAuth = useAuthStore((state) => state.loginWithOAuth);
+  useBackendWarmup();
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
 
@@ -108,6 +111,11 @@ const LoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleLogin = async () => {
+    setOauthLoading(true);
+    await loginWithOAuth("google");
   };
 
   // SMALL SCREENS: original unchanged UI
@@ -175,17 +183,60 @@ const LoginPage: React.FC = () => {
             <Box textAlign="center">
               <Link to="/register" style={{ textDecoration: "none" }}>
                 <Typography variant="body2">
-                  {"Don't have an account? Sign Up"}
+                  {"Don't have an account? "}
+                  <span className="text-teal-500 font-bold">Sign Up</span>
                 </Typography>
               </Link>
             </Box>
-            
-            <Box textAlign="center" sx={{ mt: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Note: our backend may be asleep on the free tier — the first
-                request can take a few seconds (up to ~10s).
-              </Typography>
-            </Box>
+            <Divider sx={{ my: 2 }}>or</Divider>
+
+            <button
+              className="
+                flex items-center justify-center
+                bg-white border border-[#747775] 
+                rounded-md px-3 py-2 
+                hover:bg-[#F8FAFF] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#4285F4]
+                transition-colors duration-200
+                min-w-[200px] h-10
+                mx-auto
+              "
+              style={{ fontFamily: "'Roboto', sans-serif", fontWeight: 500 }}
+              onClick={handleGoogleLogin}
+              disabled={oauthLoading || loading}
+            >
+              <div className="flex items-center justify-center w-full">
+                <div className="mr-3 w-[18px] h-[18px]">
+                  <svg
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 48 48"
+                    className="block w-full h-full"
+                  >
+                    <path
+                      fill="#EA4335"
+                      d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                    ></path>
+                    <path
+                      fill="#4285F4"
+                      d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                    ></path>
+                    <path
+                      fill="#FBBC05"
+                      d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                    ></path>
+                    <path
+                      fill="#34A853"
+                      d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                    ></path>
+                    <path fill="none" d="M0 0h48v48H0z"></path>
+                  </svg>
+                </div>
+
+                <span className="text-[#1F1F1F] text-sm tracking-wide">
+                  Continue with Google
+                </span>
+              </div>
+            </button>
           </Box>
         </Paper>
       </Container>
@@ -257,32 +308,77 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-            <Box textAlign="center">
-              <Link to="/register" style={{ textDecoration: "none" }}>
-                <Typography variant="body2">
-                  {"Don't have an account? Sign Up"}
-                </Typography>
-              </Link>
-            </Box>
-            
-            <Box textAlign="center" sx={{ mt: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Note: our backend may be asleep on the free tier — the first
-                request can take a few seconds (up to ~50s).
-              </Typography>
-            </Box>
+                  type="submit"
+                  fullWidth
+                  variant="contained"
+                  sx={{ mt: 3, mb: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    "Sign In"
+                  )}
+                </Button>
+                <Box textAlign="center">
+                  <Link to="/register" style={{ textDecoration: "none" }}>
+                    <Typography variant="body2">
+                      {"Don't have an account? "}
+                      <span className="text-teal-500 font-bold">Sign Up</span>
+                    </Typography>
+                  </Link>
+                </Box>
+                <Divider sx={{ my: 2 }}>or</Divider>
+
+                <button
+                  className="
+                    flex items-center justify-center
+                    bg-white border border-[#747775] 
+                    rounded-md px-3 py-2 
+                    hover:bg-[#F8FAFF] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#4285F4]
+                    transition-colors duration-200
+                    min-w-[200px] h-10
+                    mx-auto
+                  "
+                  style={{ fontFamily: "'Roboto', sans-serif", fontWeight: 500 }}
+                  onClick={handleGoogleLogin}
+                  disabled={oauthLoading || loading}
+                >
+                  <div className="flex items-center justify-center w-full">
+                    <div className="mr-3 w-[18px] h-[18px]">
+                      <svg
+                        version="1.1"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 48 48"
+                        className="block w-full h-full"
+                      >
+                        <path
+                          fill="#EA4335"
+                          d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                        ></path>
+                        <path
+                          fill="#4285F4"
+                          d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                        ></path>
+                        <path
+                          fill="#FBBC05"
+                          d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                        ></path>
+                        <path
+                          fill="#34A853"
+                          d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                        ></path>
+                        <path fill="none" d="M0 0h48v48H0z"></path>
+                      </svg>
+                    </div>
+
+                    <span className="text-[#1F1F1F] text-sm tracking-wide">
+                      Continue with Google
+                    </span>
+                  </div>
+                </button>
+                <Box textAlign="center" sx={{ mt: 1 }}>
+                </Box>
               </Box>
             </Paper>
           </Box>

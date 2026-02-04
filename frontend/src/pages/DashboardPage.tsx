@@ -25,15 +25,15 @@ const DashboardPage = () => {
     const doHealthCheck = async () => {
       const healthy = await checkHealth();
       setIsApiHealthy(healthy);
-      // Only fetch projects if the API is healthy and we have fetched the current user's
-      // profile. Waiting for `user` prevents loading projects belonging to a different
-      // (previous) session while auth is still resolving.
-      if (healthy && user) {
-        fetchProjects();
-      }
     };
     doHealthCheck();
-  }, [fetchProjects, isAuthenticated]);
+  }, []);
+
+  useEffect(() => {
+    if (user && isAuthenticated) {
+      fetchProjects();
+    }
+  }, [fetchProjects, user, isAuthenticated]);
 
   return (
     <Container maxWidth="lg" className="mt-10 pt-10 sm:pt-12">
@@ -58,17 +58,14 @@ const DashboardPage = () => {
       </Box>
 
       {isApiHealthy === false && (
-        <Typography color="error" className="text-center my-8">
-          Could not connect to the backend. Please ensure it is running and
-          accessible.
+        <Typography color="warning" className="text-center my-4 text-amber-600">
+          ⚠️ Agent backend is waking up. You can still view and create projects.
         </Typography>
       )}
 
-      {isApiHealthy && isLoading && (
-        <CircularProgress className="block mx-auto" />
-      )}
+      {isLoading && <CircularProgress className="block mx-auto" />}
 
-      {isApiHealthy && !isLoading && projects.length === 0 ? (
+      {!isLoading && projects.length === 0 ? (
         <Box className="text-center my-16">
           <Typography variant="h6" className="text-slate-500">
             No projects yet.

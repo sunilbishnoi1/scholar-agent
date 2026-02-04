@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProjectDetailsPage from './pages/ProjectDetailsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import ToolsPage from './pages/ToolsPage';
@@ -21,10 +22,10 @@ const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#5E5CE5', // A vibrant, modern purple
+      main: '#5E5CE5',
     },
     secondary: {
-      main: '#06B6D4', // A bright, modern cyan
+      main: '#06B6D4',
     },
     background: {
       default: '#F7F8FC',
@@ -118,31 +119,29 @@ function App() {
 
   useEffect(() => {
     if (token) {
-      fetchUser(); // refresh user data on reload
+      fetchUser();
     }
   }, [token, fetchUser]);
-
 
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-            <Header />
-            <main>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                
-                  <Route path="/know" element={<KnowPage/>}/>
-
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/" element={<DashboardPage />} />
+          <Header />
+          <main>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/auth/callback" element={<AuthCallbackPage />} />
+              <Route path="/know" element={<KnowPage />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<DashboardPage />} />
                   <Route path="/tools" element={<ToolsPage/>}/>
                   <Route path="/project/:projectId" element={<ProjectDetailsPage />} />
-                </Route>
-              </Routes>
-            </main>
+              </Route>
+            </Routes>
+          </main>
         </Router>
         <ToastContainer
           position="bottom-right"

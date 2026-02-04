@@ -21,7 +21,6 @@ from sib_api_v3_sdk.rest import ApiException
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
 
-# Load environment variables first (must be before local imports)
 load_dotenv()
 
 import auth
@@ -35,7 +34,7 @@ from services.usage_tracker import UsageTracker
 try:
     from rag.service import RAGService
 except ImportError:
-    RAGService = None  # RAG service not available
+    RAGService = None
 
 
 def create_db_and_tables():
@@ -239,13 +238,36 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 app = FastAPI(on_startup=[create_db_and_tables, start_redis_listener])
 celery_app = Celery("literature_agent", broker=REDIS_URL)
 
-origins = [
-    "https://scholar-agent.vercel.app",  # production frontend
-    "https://scholaragent.dpdns.org",
-    "http://localhost:8000",
-    "http://localhost:5174",
-    "http://localhost:5173",
-]
+
+def _get_cors_origins() -> list[str]:
+    environment = os.environ.get("ENVIRONMENT", "development")
+    allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+
+    base_origins = [
+        "http://localhost:8000",
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5173",
+    ]
+
+    if environment == "production":
+        production_origins = [
+            "https://scholar-agent.vercel.app",
+            "https://scholaragent.dpdns.org",
+        ]
+        base_origins.extend(production_origins)
+
+    if allowed_origins_env:
+        env_origins = [origin.strip() for origin in allowed_origins_env.split(",")]
+        base_origins.extend(env_origins)
+
+    return base_origins
+
+
+origins = _get_cors_origins()
+logging.info(f"CORS origins configured: {origins}")
 
 
 # Global exception handler to ensure CORS headers are always sent

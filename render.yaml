@@ -6,3 +6,8 @@ services:
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
     dockerCommand: ./start.sh
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOWED_ORIGINS
+        scope: run
