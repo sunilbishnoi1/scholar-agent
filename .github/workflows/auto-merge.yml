@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: Production
-      url: https://vercel.com/${{ secrets.VERCEL_ORG_ID }}/${{ secrets.VERCEL_PROJECT_ID }}
+      url: https://vercel.com/${{ vars.VERCEL_ORG_ID }}/${{ vars.VERCEL_PROJECT_ID }}
 
     steps:
       - name: Checkout code (main branch)
