@@ -47,10 +47,10 @@ langchain-google-genai>=2.0.0
 google-generativeai>=0.8.0
 
 # Embeddings
-sentence-transformers>=3.0.0
+# sentence-transformers>=3.0.0 (Removed: unused and causes massive torch/cuda download)
 
 # Vector store
 qdrant-client>=1.11.0
 
 # Semantic search / BM25
-rank-bm25>=0.2.2
+# rank-bm25>=0.2.2 (Removed: unused, replaced by internal implementation)
