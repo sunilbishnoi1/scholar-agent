@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "vercel-ignore-build-step": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ]; then exit 0; else exit 1; fi"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -15,6 +16,10 @@
     "@mui/icons-material": "^7.3.2",
     "@mui/material": "^7.3.2",
     "@neondatabase/neon-js": "^0.2.0-beta.1",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@remotion/player": "^4.0.419",
+    "@remotion/shapes": "^4.0.419",
     "@tanstack/react-query": "^5.87.4",
     "axios": "^1.12.1",
     "docx": "^9.5.1",
@@ -31,6 +36,8 @@
     "react-toastify": "^11.0.5",
     "recharts": "^3.2.0",
     "remark-gfm": "^4.0.0",
+    "remotion": "^4.0.419",
+    "three": "^0.182.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

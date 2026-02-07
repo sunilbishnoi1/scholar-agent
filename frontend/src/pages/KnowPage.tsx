@@ -7,6 +7,8 @@ import {
   Avatar,
   Chip,
   Grid,
+  type SxProps,
+  type Theme,
 } from "@mui/material";
 import { motion, type Variants } from "framer-motion";
 import MapIcon from "@mui/icons-material/Map";
@@ -38,7 +40,7 @@ const itemVariant: Variants = {
   },
 };
 
-const AnimatedSection: React.FC<{ children: React.ReactNode; sx?: any }> = ({
+const AnimatedSection: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }> = ({
   children,
   sx,
 }) => {
@@ -59,7 +61,7 @@ const StepCard: React.FC<{
   icon: React.ReactNode;
   title: string;
   desc: string;
-  sx?: any;
+  sx?: SxProps<Theme>;
 }> = ({ icon, title, desc, sx }) => {
   return (
     <motion.div
@@ -192,7 +194,7 @@ const KnowPage: React.FC = () => {
               desc: "The Synthesizer Agent drafts a complete literature review and emails it directly to you.",
             },
           ].map((step, idx) => (
-            <Grid {...({ item: true } as any)} xs={12} sm={6} md={3} key={idx}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
               <StepCard
                 icon={step.icon}
                 title={step.title}

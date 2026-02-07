@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Modal, Box, TextField, Button, Typography } from '@mui/material';
+import { Modal, Box, TextField, Button, Typography, CircularProgress } from '@mui/material';
 import { useProjectStore } from '../../store/projectStore';
+import { useBackendWarmup } from '../../hooks/useBackendWarmup';
 
 interface CreateProjectModalProps {
     open: boolean;
@@ -8,7 +9,7 @@ interface CreateProjectModalProps {
 }
 
 const style = {
-    position: 'absolute' as 'absolute',
+    position: 'absolute' as const,
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
@@ -26,10 +27,13 @@ const style = {
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }) => {
     const [title, setTitle] = useState('');
     const [researchQuestion, setResearchQuestion] = useState('');
-    const { addProject, isLoading } = useProjectStore();
+    const { addProject, isLoading: isCreating } = useProjectStore();
+    const { isBackendReady } = useBackendWarmup();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!isBackendReady) return;
+        
         addProject({ title, research_question: researchQuestion });
         onClose();
         setTitle('');
@@ -42,6 +46,16 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }
                 <Typography variant="h5" component="h2" className="font-bold text-slate-800">
                     Create New Research Project
                 </Typography>
+                
+                {!isBackendReady && (
+                   <Box sx={{ bgcolor: 'rgba(255, 165, 0, 0.1)', p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                       <CircularProgress size={20} color="warning" />
+                       <Typography variant="body2" color="warning.main">
+                           Agent backend is waking up (Render free tier). Please wait a moment to create your project.
+                       </Typography>
+                   </Box>
+                )}
+
                 <TextField
                     fullWidth
                     label="Project Title"
@@ -64,8 +78,14 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }
                     <Button onClick={onClose} color="inherit" className='hover:bg-grey-800'>
                         Cancel
                     </Button>
-                    <Button type="submit" variant="contained" color="primary" disabled={isLoading} className='bg-gradient-to-r from-blue-600 to-teal-500 hover:bg-blue-700 text-white'>
-                        {isLoading ? 'Creating...' : 'Create Project'}
+                    <Button 
+                        type="submit" 
+                        variant="contained" 
+                        color="primary" 
+                        disabled={isCreating || !isBackendReady} 
+                        className='bg-gradient-to-r from-blue-600 to-teal-500 hover:bg-blue-700 text-white'
+                    >
+                        {isCreating ? 'Creating...' : !isBackendReady ? 'Waking up...' : 'Create Project'}
                     </Button>
                 </Box>
             </Box>

@@ -1,11 +1,147 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Discovery Green (Success/Progress) */
+  --color-discovery-50: #E8F8F5;
+  --color-discovery-100: #D1F1EB;
+  --color-discovery-200: #A3E3D7;
+  --color-discovery-300: #75D5C3;
+  --color-discovery-400: #47C7AF;
+  --color-discovery-500: #00B894;
+  --color-discovery-600: #009A7A;
+  --color-discovery-700: #007C60;
+  --color-discovery-800: #005E46;
+  --color-discovery-900: #00402C;
+
+  /* Insight Amber (Primary Brand Accent) */
+  --color-insight-50: #FFF8E8;
+  --color-insight-100: #FFF1D1;
+  --color-insight-200: #FFE3A3;
+  --color-insight-300: #FFD575;
+  --color-insight-400: #FFC747;
+  --color-insight-500: #FFB900;
+  --color-insight-600: #E6A600;
+  --color-insight-700: #CC9300;
+  --color-insight-800: #B38000;
+  --color-insight-900: #996D00;
+
+  /* Critical Red (Errors/Urgent) */
+  --color-critical-50: #FFEBEE;
+  --color-critical-100: #FFCDD2;
+  --color-critical-200: #EF9A9A;
+  --color-critical-300: #E57373;
+  --color-critical-400: #EF5350;
+  --color-critical-500: #F44336;
+  --color-critical-600: #E53935;
+  --color-critical-700: #D32F2F;
+  --color-critical-800: #C62828;
+  --color-critical-900: #B71C1C;
+
+  /* Obsidian Neutral (Dark-first) */
+  --color-obsidian-50: #F4F4F5;
+  --color-obsidian-100: #E4E4E7;
+  --color-obsidian-200: #D4D4D8;
+  --color-obsidian-300: #A1A1AA;
+  --color-obsidian-400: #71717A;
+  --color-obsidian-500: #52525B;
+  --color-obsidian-600: #3F3F46;
+  --color-obsidian-700: #27272F;
+  --color-obsidian-800: #18181B;
+  --color-obsidian-900: #09090B;
+
+  /* Aurora Teal (Secondary Accent) */
+  --color-aurora-50: #E6FFF9;
+  --color-aurora-100: #CCFFF3;
+  --color-aurora-200: #99FFE7;
+  --color-aurora-300: #66FFD9;
+  --color-aurora-400: #33FFCC;
+  --color-aurora-500: #00F5C8;
+  --color-aurora-600: #00D6AA;
+  --color-aurora-700: #00B88D;
+  --color-aurora-800: #008C67;
+  --color-aurora-900: #005942;
+
+  /* Core UI Tokens (Dark-first) */
+  --bg-page: var(--color-obsidian-900);
+  --bg-surface: var(--color-obsidian-800);
+  --bg-elevated: var(--color-obsidian-700);
+
+  --text-primary: var(--color-obsidian-50);
+  --text-secondary: var(--color-obsidian-300);
+  --text-muted: var(--color-obsidian-400);
+
+  --border-subtle: var(--color-obsidian-700);
+  --border-strong: var(--color-obsidian-600);
+
+  --accent-primary: var(--color-insight-500);
+  --accent-secondary: var(--color-aurora-500);
+  --accent-success: var(--color-discovery-500);
+  --accent-error: var(--color-critical-500);
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.2);
+
+  /* Transitions */
+  --transition-fast: 150ms;
+  --transition-standard: 250ms;
+  --transition-slow: 400ms;
+
+  /* Easing */
+  --ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
+  --ease-spring: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Fonts */
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-content: 'Crimson Pro', 'Georgia', 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-primary);
+  color: var(--text-primary);
+  background-color: var(--bg-page);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

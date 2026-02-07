@@ -1,6 +1,6 @@
 import { createClient, SupabaseAuthAdapter } from '@neondatabase/neon-js';
 import { NEON_AUTH_URL, NEON_DATA_API_URL, RENDER_BACKEND_URL } from '../config';
-import type { User } from '../types';
+import type { User, ResearchProject } from '../types';
 
 const getOAuthCallbackURL = () => {
   if (typeof window !== 'undefined') {
@@ -67,35 +67,48 @@ export const neonAuth = {
 };
 
 async function syncUserWithBackend(): Promise<void> {
-  const { data } = await neonClient.auth.getSession();
+  const { data } = await neonAuth.getSession();
   if (!data?.session?.access_token) return;
-  
-  try {
-    const response = await fetch(`${RENDER_BACKEND_URL}/api/auth/users/me`, {
-      headers: {
-        'Authorization': `Bearer ${data.session.access_token}`,
-      },
-    });
-    if (!response.ok && response.status !== 401) {
-      console.warn('Backend user sync returned status:', response.status);
-    }
-  } catch (error) {
-    console.warn('Backend user sync failed (backend may be waking up):', error);
-  }
+
+  fetch(`${RENDER_BACKEND_URL}/api/auth/users/me`, {
+    headers: {
+      'Authorization': `Bearer ${data.session.access_token}`,
+    },
+  }).catch(error => {
+    console.warn('Background backend user sync failed (backend may be waking up):', error);
+  });
 }
 
 export const neonData = {
   getProfile: async (): Promise<User | null> => {
     const { data: userData } = await neonClient.auth.getUser();
     if (!userData?.user) return null;
-    
-    await syncUserWithBackend();
-    
+
+    syncUserWithBackend();
+
     const neonUser = userData.user;
     return {
       id: neonUser.id,
       email: neonUser.email || '',
       name: neonUser.user_metadata?.name || neonUser.email?.split('@')[0] || 'User',
     };
+  },
+
+  getProjects: async (): Promise<ResearchProject[]> => {
+    const { data: sessionData } = await neonAuth.getSession();
+    if (!sessionData?.session?.user) return [];
+
+    const { data, error } = await neonClient
+      .from('research_projects')
+      .select('*, paper_references(*), agent_plans(*)')
+      .eq('user_id', sessionData.session.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching projects from Neon:', error);
+      throw error;
+    }
+
+    return (data || []) as ResearchProject[];
   },
 };

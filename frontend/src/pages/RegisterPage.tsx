@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useBackendWarmup } from "../hooks/useBackendWarmup";
@@ -95,9 +95,14 @@ const RegisterPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const navigate = useNavigate();
-  const register = useAuthStore((state) => state.register);
-  const loginWithOAuth = useAuthStore((state) => state.loginWithOAuth);
+  const { register, loginWithOAuth, isAuthenticated, isInitialized } = useAuthStore();
   useBackendWarmup();
+
+  useEffect(() => {
+    if (isInitialized && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isInitialized, isAuthenticated, navigate]);
 
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
@@ -108,7 +113,7 @@ const RegisterPage: React.FC = () => {
       setLoading(true);
       const success = await register({ name, email, password });
       if (success) {
-        navigate("/");
+        navigate("/dashboard");
       }
     } finally {
       setLoading(false);

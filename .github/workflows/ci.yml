@@ -326,7 +326,7 @@ jobs:
     needs: [test-backend-unit, build-frontend]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    # environment: staging  # Uncomment if using environment-scoped secrets
+    environment: staging
 
     steps:
       - name: Checkout code
@@ -368,18 +368,22 @@ jobs:
   # ==========================================
   # Deploy to Production (on main branch)
   # ==========================================
-  deploy-production:
-    name: Deploy to Production
+  # ==========================================
+  # Deploy Backend to Production (Render)
+  # ==========================================
+  deploy-backend-production:
+    name: Deploy Backend to Production
     needs:
       [
         test-backend-unit,
         test-backend-integration,
-        build-frontend,
         security-scan,
       ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    # environment: production  # Uncomment if using environment-scoped secrets
+    environment:
+      name: scholar-backend
+      url: https://dashboard.render.com/web/${{ vars.RENDER_SERVICE_ID }}
 
     steps:
       - name: Checkout code
@@ -404,6 +408,22 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
+  # ==========================================
+  # Deploy Frontend to Production (Vercel)
+  # ==========================================
+  deploy-frontend-production:
+    name: Deploy Frontend to Production
+    needs: [build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://vercel.com/${{ secrets.VERCEL_ORG_ID }}/${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Node.js for Vercel CLI
         if: ${{ vars.VERCEL_DEPLOY_ENABLED == 'true' }}
         uses: actions/setup-node@v4
@@ -426,5 +446,4 @@ jobs:
       - name: Notify deployment success
         run: |
           echo "✅ Production deployment triggered successfully!"
-          echo "Backend: Render"
           echo "Frontend: Vercel"
