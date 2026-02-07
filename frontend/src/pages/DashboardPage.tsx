@@ -10,7 +10,6 @@ import AddIcon from "@mui/icons-material/Add";
 import ProjectCard from "../components/dashboard/ProjectCard";
 import CreateProjectModal from "../components/dashboard/CreateProjectModal";
 import { useProjectStore } from "../store/projectStore";
-import { checkHealth } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import type { ResearchProject } from "../types";
 
@@ -18,16 +17,7 @@ const DashboardPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { projects, isLoading, fetchProjects } = useProjectStore();
   const user = useAuthStore((s) => s.user);
-  const [isApiHealthy, setIsApiHealthy] = useState<boolean | null>(null);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-
-  useEffect(() => {
-    const doHealthCheck = async () => {
-      const healthy = await checkHealth();
-      setIsApiHealthy(healthy);
-    };
-    doHealthCheck();
-  }, []);
 
   useEffect(() => {
     if (user && isAuthenticated) {
@@ -49,19 +39,12 @@ const DashboardPage = () => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setIsModalOpen(true)}
-          disabled={!isApiHealthy}
           className="bg-gradient-to-r from-blue-600 to-teal-500 hover:bg-blue-700 text-white"
         >
           <span className="block md:hidden">New</span>
           <span className="hidden md:inline">New Project</span>
         </Button>
       </Box>
-
-      {isApiHealthy === false && (
-        <Typography color="warning" className="text-center my-4 text-amber-600">
-          ⚠️ Agent backend is waking up. You can still view and create projects.
-        </Typography>
-      )}
 
       {isLoading && <CircularProgress className="block mx-auto" />}
 

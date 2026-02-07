@@ -117,11 +117,17 @@ jobs:
   # CRITICAL: This job runs deployment because GITHUB_TOKEN merges
   # do NOT trigger subsequent workflows (GitHub's infinite loop prevention).
   # We deploy here since CI already passed on develop.
-  deploy-production:
-    name: Deploy to Production
+  # ==========================================
+  # Deploy Backend to Production after merge
+  # ==========================================
+  deploy-backend-production:
+    name: Deploy Backend to Production
     needs: auto-merge
     if: needs.auto-merge.outputs.merged == 'true'
     runs-on: ubuntu-latest
+    environment:
+      name: scholar-backend
+      url: https://dashboard.render.com/web/${{ vars.RENDER_SERVICE_ID }}
 
     steps:
       - name: Checkout code (main branch)
@@ -136,7 +142,6 @@ jobs:
 
           if [ -z "${{ vars.RENDER_SERVICE_ID }}" ]; then
             echo "⚠️ RENDER_SERVICE_ID not configured, skipping backend deployment"
-            echo "deployed=skipped" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -149,14 +154,30 @@ jobs:
 
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
             echo "✅ Production backend deployment triggered successfully (HTTP $http_code)"
-            echo "deployed=success" >> $GITHUB_OUTPUT
           else
             echo "❌ Failed to trigger production backend deployment (HTTP $http_code)"
-            echo "deployed=failed" >> $GITHUB_OUTPUT
             exit 1
           fi
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+
+  # ==========================================
+  # Deploy Frontend to Production after merge
+  # ==========================================
+  deploy-frontend-production:
+    name: Deploy Frontend to Production
+    needs: auto-merge
+    if: needs.auto-merge.outputs.merged == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://vercel.com/${{ vars.VERCEL_ORG_ID }}/${{ vars.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout code (main branch)
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node.js for Vercel CLI
         if: vars.VERCEL_DEPLOY_ENABLED == 'true'

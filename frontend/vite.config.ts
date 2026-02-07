@@ -6,7 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({ 
+    VitePWA({
       registerType: 'autoUpdate',
       // You can still provide your own manifest.json in the public directory
       // or configure it here. The plugin will merge them.
@@ -30,7 +30,8 @@ export default defineConfig({
       },
       // Workbox configuration for caching strategies
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        maximumFileSizeToCacheInBytes: 5000000,
       }
     })
   ],

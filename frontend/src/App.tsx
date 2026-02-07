@@ -1,123 +1,67 @@
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { CssBaseline } from "@mui/material";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-import Header from './components/common/Header';
-import DashboardPage from './pages/DashboardPage';
-import ProjectDetailsPage from './pages/ProjectDetailsPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import AuthCallbackPage from './pages/AuthCallbackPage';
-import ProtectedRoute from './components/common/ProtectedRoute';
-import { useAuthStore } from './store/authStore';
-import ToolsPage from './pages/ToolsPage';
-import KnowPage from './pages/KnowPage';
-import { useEffect } from 'react';
+import Header from "./components/common/Header";
+import { LandingNavigation } from "./components/landing/LandingNavigation";
+import LandingPage from "./pages/LandingPage";
+import DashboardPage from "./pages/DashboardPage";
+import ProjectDetailsPage from "./pages/ProjectDetailsPage";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
+import ProtectedRoute from "./components/common/ProtectedRoute";
+import { useAuthStore } from "./store/authStore";
+import ToolsPage from "./pages/ToolsPage";
+import HowItWorksPage from "./pages/HowItWorksPage";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { RENDER_BACKEND_URL } from "./config";
+
+const warmupBackend = () => {
+  console.log("Warming up backend...");
+  fetch(`${RENDER_BACKEND_URL}/api/health`).catch(() => {
+    // Ignore errors, we just want to trigger the wake up
+  });
+};
 
 const queryClient = new QueryClient();
 
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#5E5CE5',
-    },
-    secondary: {
-      main: '#06B6D4',
-    },
-    background: {
-      default: '#F7F8FC',
-      paper: 'rgba(255, 255, 255, 0.7)',
-    },
-    text: {
-      primary: '#1A202C',
-      secondary: '#718096',
-    },
-    success: {
-      main: '#34D399',
-    },
-    error: {
-      main: '#EF4444',
-    },
-    warning: {
-      main: '#F59E0B',
-    },
-    info: {
-      main: '#3B82F6',
-    },
-  },
-  typography: {
-    fontFamily: '"Inter", sans-serif',
-    h1: {
-      fontWeight: 700,
-    },
-    h2: {
-      fontWeight: 700,
-    },
-    h3: {
-      fontWeight: 600,
-    },
-    h4: {
-      fontWeight: 600,
-    },
-  },
-  shape: {
-    borderRadius: 12,
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          textTransform: 'none',
-          fontWeight: 600,
-          borderRadius: 8,
-          padding: '10px 20px',
-          boxShadow: 'none',
-          transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-          },
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 16,
-          transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-          '&:hover': {
-            transform: 'translateY(-5px)',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
-          },
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          backgroundImage: 'none',
-        },
-      },
-    },
-    MuiTextField: {
-      styleOverrides: {
-        root: {
-          '& .MuiOutlinedInput-root': {
-            borderRadius: 8,
-          },
-        },
-      },
-    },
-  },
-});
+function AppContent() {
+  const location = useLocation();
+  const isLandingPage = location.pathname === "/";
+
+  return (
+    <>
+      {isLandingPage ? <LandingNavigation /> : <Header />}
+      <main>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
+            <Route
+              path="/project/:projectId"
+              element={<ProjectDetailsPage />}
+            />
+          </Route>
+        </Routes>
+      </main>
+    </>
+  );
+}
 
 function App() {
   const { token, fetchUser } = useAuthStore();
 
   useEffect(() => {
+    warmupBackend();
     if (token) {
       fetchUser();
     }
@@ -125,24 +69,9 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Router>
-          <Header />
-          <main>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/auth/callback" element={<AuthCallbackPage />} />
-              <Route path="/know" element={<KnowPage />} />
-              <Route element={<ProtectedRoute />}>
-                <Route path="/" element={<DashboardPage />} />
-                  <Route path="/tools" element={<ToolsPage/>}/>
-                  <Route path="/project/:projectId" element={<ProjectDetailsPage />} />
-              </Route>
-            </Routes>
-          </main>
-        </Router>
+      <CssBaseline />
+      <Router>
+        <AppContent />
         <ToastContainer
           position="bottom-right"
           autoClose={3000}
@@ -153,9 +82,9 @@ function App() {
           pauseOnFocusLoss
           draggable
           pauseOnHover
-          theme="light"
+          theme="dark"
         />
-      </ThemeProvider>
+      </Router>
     </QueryClientProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ResearchProject, ProjectCreate } from '../types';
-import { getProjects, createProject, deleteProject } from '../api/client';
+import { createProject, deleteProject } from '../api/client';
+import { neonData } from '../api/neonClient';
 import { toast } from 'react-toastify';
 
 interface ProjectState {
@@ -22,10 +23,10 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
     fetchProjects: async () => {
         set({ isLoading: true });
         try {
-            const projects = await getProjects();
+            const projects = await neonData.getProjects();
             set({ projects, isLoading: false });
         } catch {
-            const errorMessage = 'Failed to fetch projects. Backend may be starting up.';
+            const errorMessage = 'Failed to fetch projects. Neon database might be unavailable.';
             set({ error: errorMessage, isLoading: false });
             toast.error(errorMessage);
         }
@@ -69,7 +70,7 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
     removeProject: async (projectId) => {
         const state = _get();
         const projectToDelete = state.projects.find((p) => p.id === projectId);
-        
+
         if (!projectToDelete) {
             toast.error("Project not found");
             return false;

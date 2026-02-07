@@ -1,0 +1,208 @@
+/* Agent Journey - Scroll-Driven Pipeline Experience */
+
+.agent-journey {
+  position: relative;
+  padding: var(--spacing-3xl) 0;
+}
+
+/* SVG Container */
+.agent-journey__svg-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Cards Container */
+.agent-journey__cards {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 240px;
+  /* Even more vertical spacing for minimal look */
+  z-index: 2;
+}
+
+/* Individual Card Row */
+.agent-journey__card-row {
+  display: grid;
+  grid-template-columns: 1fr 240px 1fr;
+  /* Much wider middle column for wider curve */
+  gap: var(--spacing-xl);
+  align-items: center;
+}
+
+/* Card Positioning */
+.agent-journey__content-left,
+.agent-journey__content-right {
+  min-height: 200px;
+}
+
+.agent-journey__content-left {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-journey__content-right {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Empty placeholder for alternating layout */
+.agent-journey__empty {
+  min-height: 200px;
+}
+
+/* Agent Card */
+.agent-journey__card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  max-width: 400px;
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-standard) var(--ease-standard);
+  position: relative;
+  /* Context for anchor */
+}
+
+.agent-journey__card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.agent-journey__card--active {
+  border-color: currentColor;
+  box-shadow: 0 5px 30px -5px currentColor;
+}
+
+/* Anchor Points */
+.agent-journey__anchor {
+  /* Default styles handled in JS for now to allow dynamic colors, 
+     but positioning controlled here */
+}
+
+.agent-journey__anchor--right {
+  right: -6px;
+}
+
+.agent-journey__anchor--left {
+  left: -6px;
+}
+
+/* Card Header */
+.agent-journey__card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.agent-journey__card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.25rem;
+  color: var(--bg-page);
+}
+
+.agent-journey__card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.agent-journey__card-role {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Card Description */
+.agent-journey__card-description {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+/* Remotion Container */
+.agent-journey__animation {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  aspect-ratio: 3/2;
+  max-width: 400px;
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Responsive - Tablet */
+@media (max-width: 1024px) {
+
+  .agent-journey__card,
+  .agent-journey__animation {
+    max-width: 320px;
+  }
+}
+
+/* Responsive - Mobile */
+@media (max-width: 768px) {
+  .agent-journey__cards {
+    gap: 80px;
+  }
+
+  .agent-journey__card-row {
+    grid-template-columns: 48px 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .agent-journey__content-left,
+  .agent-journey__content-right {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  /* Hide the spacer div in the middle column (it becomes implicit or hidden) */
+  .agent-journey__spacer {
+    display: none;
+  }
+
+  .agent-journey__empty {
+    display: none;
+  }
+
+  .agent-journey__card,
+  .agent-journey__animation {
+    max-width: 100%;
+  }
+
+  /* Force anchors to left on mobile */
+  .agent-journey__anchor--right,
+  .agent-journey__anchor--left {
+    right: auto;
+    left: -12px;
+    /* Slightly more offset on mobile? Or stick to -6 */
+  }
+
+  .agent-journey__mobile-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .agent-journey__card {
+    transition: none;
+  }
+}

@@ -103,8 +103,7 @@ export const handlers = [
     })
   }),
 
-  http.post(`${API_URL}/projects/:id/start`, async ({ params }: { params: Record<string, string> }) => {
-    const { id } = params
+  http.post(`${API_URL}/projects/:id/start`, async () => {
     return HttpResponse.json({
       job_id: 'job-123',
       status: 'queued',
