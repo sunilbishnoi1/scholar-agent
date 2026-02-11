@@ -13,11 +13,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Tooltip,
-  Chip,
   Divider,
 } from "@mui/material";
-import { Link, useNavigate } from "react-router-dom";
+import { styled } from "@mui/system";
+import { useNavigate } from "react-router-dom";
 import type { ResearchProject } from "../../types";
 import StatusChip from "../common/StatusChip";
 import { startLiteratureReview } from "../../api/client";
@@ -31,22 +30,82 @@ import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useProjectStream } from "../../hooks/useProjectStream";
 
-interface ProjectCardProps {
-  project: ResearchProject;
-}
+const NoirCard = styled(Card)<{ isCompleted: boolean }>(({ isCompleted }) => ({
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  borderRadius: "16px",
+  backgroundColor: "rgba(24, 24, 27, 0.6)",
+  backdropFilter: "blur(12px)",
+  border: "1px solid #27272F",
+  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+  cursor: isCompleted ? "pointer" : "default",
+  position: "relative",
+  overflow: "hidden",
+  "&:hover": {
+    transform: isCompleted ? "translateY(-6px)" : "none",
+    borderColor: isCompleted ? "#FFB900" : "#3F3F46",
+    boxShadow: isCompleted
+      ? "0 12px 30px rgba(0,0,0,0.5), 0 0 20px rgba(255, 185, 0, 0.1)"
+      : "none",
+    "& .card-glow": { opacity: 1 },
+  },
+}));
+
+const CardGlow = styled(Box)({
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  background:
+    "radial-gradient(circle at 50% 0%, rgba(255, 185, 0, 0.08), transparent 70%)",
+  opacity: 0,
+  transition: "opacity 0.4s ease",
+  pointerEvents: "none",
+});
+
+const ProgressText = styled(Typography)({
+  fontFamily: "'Inter', sans-serif",
+  fontSize: "0.75rem",
+  color: "#71717A",
+  fontWeight: 500,
+});
+
+const ActionButton = styled(Button)<{ variant_type?: "amber" | "outline" }>(
+  ({ variant_type }) => ({
+    textTransform: "none",
+    fontWeight: 700,
+    borderRadius: "8px",
+    padding: "8px 16px",
+    transition: "all 0.2s ease",
+    ...(variant_type === "amber"
+      ? {
+          backgroundColor: "#FFB900",
+          color: "#09090B",
+          "&:hover": { backgroundColor: "#E6A600" },
+        }
+      : {
+          borderColor: "#27272F",
+          color: "#F4F4F5",
+          "&:hover": {
+            borderColor: "#FFB900",
+            backgroundColor: "rgba(255, 185, 0, 0.05)",
+          },
+        }),
+  }),
+);
 
 const ProgressTracker: React.FC<{
   project: ResearchProject;
   realtimePapersAnalyzed?: number;
   realtimeTotalPapers?: number;
 }> = ({ project, realtimePapersAnalyzed, realtimeTotalPapers }) => {
-  // Prefer real-time WebSocket counts over static project data
   const papersAnalyzed =
-    realtimePapersAnalyzed !== undefined
-      ? realtimePapersAnalyzed
-      : project.agent_plans.filter((p) => p.agent_type === "analyzer").length;
+    realtimePapersAnalyzed ??
+    project.agent_plans.filter((p) => p.agent_type === "analyzer").length;
   const totalPapersToAnalyze =
-    realtimeTotalPapers !== undefined && realtimeTotalPapers > 0
+    realtimeTotalPapers && realtimeTotalPapers > 0
       ? realtimeTotalPapers
       : project.total_papers_found;
 
@@ -54,37 +113,28 @@ const ProgressTracker: React.FC<{
   let progressText = "Initializing...";
   let isIndeterminate = false;
 
-  const BASE_SEARCHING = 5;
-  const BASE_ANALYZING = 15;
-  const BASE_SYNTHESIZING = 95;
-
   switch (project.status) {
     case "planning":
-      progress = 2;
-      progressText = "Initializing workflow...";
+      progress = 5;
       isIndeterminate = true;
       break;
     case "searching":
-      progress = BASE_SEARCHING;
-      progressText = "Searching for relevant papers...";
+      progress = 15;
+      progressText = "Scouring databases...";
       isIndeterminate = true;
       break;
     case "analyzing":
       if (totalPapersToAnalyze > 0) {
-        progress =
-          BASE_ANALYZING +
-          (papersAnalyzed / totalPapersToAnalyze) *
-            (BASE_SYNTHESIZING - BASE_ANALYZING);
-        progressText = `Analyzing: ${papersAnalyzed} of ${totalPapersToAnalyze} papers`;
+        progress = 20 + (papersAnalyzed / totalPapersToAnalyze) * 70;
+        progressText = `Extracting insights: ${papersAnalyzed}/${totalPapersToAnalyze}`;
       } else {
-        progress = BASE_ANALYZING;
-        progressText = "Preparing to analyze papers...";
+        progress = 20;
         isIndeterminate = true;
       }
       break;
     case "synthesizing":
-      progress = BASE_SYNTHESIZING;
-      progressText = "Synthesizing final report...";
+      progress = 95;
+      progressText = "Drafting final synthesis...";
       isIndeterminate = true;
       break;
     default:
@@ -92,27 +142,25 @@ const ProgressTracker: React.FC<{
   }
 
   return (
-    <Box className="w-full mt-3">
-      <Box className="flex justify-between items-center mb-1">
-        <Typography variant="caption" className="text-slate-500 font-medium">
-          {progressText}
-        </Typography>
+    <Box sx={{ mt: 3, width: "100%" }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+        <ProgressText>{progressText}</ProgressText>
         {!isIndeterminate && (
-          <Typography variant="caption" className="text-slate-400">
+          <ProgressText sx={{ color: "#FFB900" }}>
             {Math.round(progress)}%
-          </Typography>
+          </ProgressText>
         )}
       </Box>
       <LinearProgress
         variant={isIndeterminate ? "indeterminate" : "determinate"}
         value={progress}
         sx={{
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: "rgba(255, 255, 255, 0.05)",
           "& .MuiLinearProgress-bar": {
-            borderRadius: 3,
-            background: "linear-gradient(90deg, #3b82f6 0%, #14b8a6 100%)",
+            borderRadius: 2,
+            background: "linear-gradient(90deg, #FFB900 0%, #00F5C8 100%)",
           },
         }}
       />
@@ -120,7 +168,7 @@ const ProgressTracker: React.FC<{
   );
 };
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
+const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
   const { updateProjectStatus, removeProject } = useProjectStore();
   const isProcessing = [
     "planning",
@@ -128,15 +176,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     "analyzing",
     "synthesizing",
   ].includes(project.status);
-
-  // Use WebSocket for real-time updates instead of polling
-  // The hook automatically updates the project store with real-time data
-  const {
-    papersAnalyzed: realtimePapersAnalyzed,
-    totalPapers: realtimeTotalPapers,
-  } = useProjectStream(isProcessing ? project.id : undefined, {
-    autoReconnect: true,
-  });
+  const { papersAnalyzed, totalPapers } = useProjectStream(
+    isProcessing ? project.id : undefined,
+    { autoReconnect: true },
+  );
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -145,131 +188,59 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
   const handleStartReview = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      toast.info(`Starting literature review for "${project.title}"...`, {
-        toastId: `start-review-${project.id}`,
-      });
       updateProjectStatus(project.id, "planning");
       await startLiteratureReview(project.id);
-    } catch (error) {
-      console.error("Failed to start literature review:", error);
-      toast.error("Failed to start literature review. Please try again.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Deployment failed. Re-initialize system.");
       updateProjectStatus(project.id, "error");
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    setIsDeleting(true);
-    await removeProject(project.id);
-    setIsDeleting(false);
-    setDeleteDialogOpen(false);
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteDialogOpen(false);
-  };
-
-  const handleCardClick = () => {
-    if (project.status === "completed") {
-      navigate(`/project/${project.id}`);
-    }
-  };
-
-  const isCreating = project.status === "creating";
-  const isReady = project.status === "created";
+  const isCompleted = project.status === "completed";
   const isFailed =
     project.status === "error" || project.status === "error_no_papers_found";
-  const isCompleted = project.status === "completed";
-
-  // Format date
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
 
   return (
     <>
-      <Card
-        onClick={handleCardClick}
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          borderRadius: 3,
-          border: "1px solid",
-          borderColor: "rgba(0,0,0,0.08)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
-          transition: "all 0.3s ease",
-          cursor: isCompleted ? "pointer" : "default",
-          background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
-          "&:hover": {
-            transform: isCompleted ? "translateY(-4px)" : "none",
-            boxShadow: isCompleted
-              ? "0 12px 40px rgba(59, 130, 246, 0.15)"
-              : "0 4px 20px rgba(0,0,0,0.05)",
-            borderColor: isCompleted
-              ? "rgba(59, 130, 246, 0.3)"
-              : "rgba(0,0,0,0.08)",
-          },
-        }}
+      <NoirCard
+        isCompleted={isCompleted}
+        onClick={() => isCompleted && navigate(`/project/${project.id}`)}
       >
-        {/* Header Section */}
+        <CardGlow className="card-glow" />
+
         <Box
           sx={{
             p: 2.5,
-            pb: 2,
+            pb: 0,
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 1,
+            alignItems: "center",
+            zIndex: 1,
           }}
         >
           <StatusChip status={project.status} />
-          <Tooltip title="Delete project" arrow>
-            <IconButton
-              size="small"
-              onClick={handleDeleteClick}
-              disabled={isDeleting || isProcessing}
-              sx={{
-                color: "grey.400",
-                "&:hover": {
-                  color: "error.main",
-                  backgroundColor: "error.lighter",
-                },
-                "&.Mui-disabled": {
-                  color: "grey.300",
-                },
-              }}
-            >
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteDialogOpen(true);
+            }}
+            sx={{ color: "#3F3F46", "&:hover": { color: "#EF4444" } }}
+          >
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
         </Box>
 
-        {/* Content Section */}
-        <CardContent sx={{ flexGrow: 1, pt: 0, px: 2.5, pb: 2 }}>
+        <CardContent sx={{ flexGrow: 1, px: 2.5, py: 2.5, zIndex: 1 }}>
           <Typography
             variant="h6"
-            component="h3"
             sx={{
               fontWeight: 700,
-              fontSize: "1.1rem",
-              color: "slate.800",
-              mb: 1.5,
+              color: "#F4F4F5",
+              mb: 1,
+              letterSpacing: "-0.01em",
               lineHeight: 1.3,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
             }}
           >
             {project.title}
@@ -278,218 +249,142 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
           <Typography
             variant="body2"
             sx={{
-              color: "text.secondary",
+              color: "#A1A1AA",
+              fontFamily: "'Crimson Pro', serif",
               fontStyle: "italic",
-              lineHeight: 1.5,
+              fontSize: "1.05rem",
+              mb: 2,
               display: "-webkit-box",
               WebkitLineClamp: 2,
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
-              mb: 2,
             }}
           >
             "{project.research_question}"
           </Typography>
 
-          {/* Meta Info */}
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-            {project.created_at && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <CalendarTodayOutlinedIcon
-                  sx={{ fontSize: 14, color: "grey.400" }}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  {formatDate(project.created_at)}
-                </Typography>
-              </Box>
-            )}
+          <Box sx={{ display: "flex", gap: 2.5, mt: "auto" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.7 }}>
+              <CalendarTodayOutlinedIcon
+                sx={{ fontSize: 14, color: "#52525B" }}
+              />
+              <Typography variant="caption" sx={{ color: "#71717A" }}>
+                {new Date(project.created_at).toLocaleDateString()}
+              </Typography>
+            </Box>
             {project.total_papers_found > 0 && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <ArticleOutlinedIcon sx={{ fontSize: 14, color: "grey.400" }} />
-                <Typography variant="caption" color="text.secondary">
-                  {project.total_papers_found} papers
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.7 }}>
+                <ArticleOutlinedIcon sx={{ fontSize: 14, color: "#52525B" }} />
+                <Typography variant="caption" sx={{ color: "#71717A" }}>
+                  {project.total_papers_found} Sources
                 </Typography>
               </Box>
             )}
           </Box>
 
-          {/* Progress Section (only during processing) */}
           {isProcessing && (
             <ProgressTracker
               project={project}
-              realtimePapersAnalyzed={realtimePapersAnalyzed}
-              realtimeTotalPapers={realtimeTotalPapers}
+              realtimePapersAnalyzed={papersAnalyzed}
+              realtimeTotalPapers={totalPapers}
             />
           )}
         </CardContent>
 
-        <Divider />
+        <Divider sx={{ borderColor: "#27272F", opacity: 0.5 }} />
 
-        {/* Action Section */}
-        <Box sx={{ p: 2, backgroundColor: "rgba(248, 250, 252, 0.5)" }}>
-          {isCreating && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 1.5,
-                py: 0.5,
-              }}
-            >
-              <CircularProgress size={18} thickness={4} />
-              <Typography variant="body2" color="text.secondary">
-                Setting up project...
-              </Typography>
-            </Box>
-          )}
-
-          {isReady && (
-            <Button
+        <Box sx={{ p: 2, backgroundColor: "rgba(9, 9, 11, 0.4)", zIndex: 1 }}>
+          {project.status === "created" && (
+            <ActionButton
+              variant_type="amber"
               fullWidth
-              variant="contained"
               onClick={handleStartReview}
               startIcon={<AutoAwesomeIcon />}
-              sx={{
-                background: "linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%)",
-                textTransform: "none",
-                fontWeight: 600,
-                py: 1,
-                borderRadius: 2,
-                "&:hover": {
-                  background:
-                    "linear-gradient(135deg, #2563eb 0%, #0d9488 100%)",
-                },
-              }}
             >
-              Start Literature Review
-            </Button>
-          )}
-
-          {isProcessing && (
-            <Chip
-              label="Processing..."
-              size="small"
-              sx={{
-                width: "100%",
-                backgroundColor: "rgba(59, 130, 246, 0.1)",
-                color: "primary.main",
-                fontWeight: 500,
-              }}
-            />
+              Initiate Agents
+            </ActionButton>
           )}
 
           {isCompleted && (
-            <Button
-              component={Link}
-              to={`/project/${project.id}`}
-              fullWidth
+            <ActionButton
+              variant_type="outline"
               variant="outlined"
+              fullWidth
               endIcon={<ArrowForwardIcon />}
-              onClick={(e) => e.stopPropagation()}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                py: 1,
-                borderRadius: 2,
-                borderColor: "primary.main",
-                color: "primary.main",
-                "&:hover": {
-                  backgroundColor: "primary.main",
-                  color: "white",
-                  borderColor: "primary.main",
-                },
-              }}
             >
-              View Results
-            </Button>
+              Examine Findings
+            </ActionButton>
           )}
 
           {isFailed && (
-            <Button
+            <ActionButton
+              variant_type="amber"
               fullWidth
-              variant="contained"
-              color="warning"
               onClick={handleStartReview}
               startIcon={<RefreshIcon />}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                py: 1,
-                borderRadius: 2,
-              }}
             >
-              Retry Review
-            </Button>
+              Retry Deployment
+            </ActionButton>
+          )}
+
+          {isProcessing && (
+            <Box sx={{ textAlign: "center", py: 0.5 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "#00F5C8",
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Neural Link Active
+              </Typography>
+            </Box>
           )}
         </Box>
-      </Card>
+      </NoirCard>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
-        onClose={handleDeleteCancel}
+        onClose={() => setDeleteDialogOpen(false)}
         PaperProps={{
           sx: {
-            borderRadius: 3,
-            maxWidth: 400,
-            backgroundColor: "#ffffff",
-            backgroundImage: "none",
+            backgroundColor: "#18181B",
+            border: "1px solid #27272F",
+            borderRadius: "12px",
+            color: "#F4F4F5",
           },
         }}
       >
-        <DialogTitle sx={{ pb: 1, fontWeight: 600, color: "#1e293b" }}>
-          Delete Project?
-        </DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Terminate Project?</DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: "#64748b" }}>
-            Are you sure you want to delete <strong>"{project.title}"</strong>?
-            This will permanently remove the project and all its associated data
-            including paper references and analysis results.
+          <DialogContentText sx={{ color: "#A1A1AA" }}>
+            Deconstructing this workspace will permanently erase all synthesized
+            insights for <strong>"{project.title}"</strong>.
           </DialogContentText>
-          <Box
-            sx={{
-              mt: 2,
-              p: 1.5,
-              borderRadius: 2,
-              backgroundColor: "#fee2e2",
-              border: "1px solid #fecaca",
-            }}
-          >
-            <Typography
-              variant="caption"
-              sx={{ color: "#dc2626", fontWeight: 500 }}
-            >
-              ⚠️ This action cannot be undone.
-            </Typography>
-          </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 1 }}>
+        <DialogActions sx={{ p: 2.5 }}>
           <Button
-            onClick={handleDeleteCancel}
-            disabled={isDeleting}
-            sx={{ textTransform: "none" }}
+            onClick={() => setDeleteDialogOpen(false)}
+            sx={{ color: "#71717A", textTransform: "none" }}
           >
-            Cancel
+            Abort
           </Button>
           <Button
-            onClick={handleDeleteConfirm}
-            color="error"
-            variant="contained"
-            disabled={isDeleting}
-            startIcon={
-              isDeleting ? (
-                <CircularProgress size={16} color="inherit" />
-              ) : (
-                <DeleteOutlineIcon />
-              )
-            }
-            sx={{
-              textTransform: "none",
-              borderRadius: 2,
+            onClick={async () => {
+              setIsDeleting(true);
+              await removeProject(project.id);
             }}
+            variant="contained"
+            color="error"
+            sx={{ borderRadius: "8px", textTransform: "none", fontWeight: 700 }}
           >
-            {isDeleting ? "Deleting..." : "Delete Project"}
+            {isDeleting ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : (
+              "Delete Workspace"
+            )}
           </Button>
         </DialogActions>
       </Dialog>

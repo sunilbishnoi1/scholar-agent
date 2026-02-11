@@ -18,7 +18,7 @@ export default function LandingPage() {
   }, [isInitialized, isAuthenticated, navigate]);
 
   if (isInitialized && isAuthenticated) {
-    return null; // Or a loading spinner while redirecting
+    return null; 
   }
 
   return (
