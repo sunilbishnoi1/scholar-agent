@@ -67,25 +67,30 @@ export const neonAuth = {
 };
 
 async function syncUserWithBackend(): Promise<void> {
-  const { data } = await neonAuth.getSession();
+  const { data } = await neonClient.auth.getSession();
   if (!data?.session?.access_token) return;
-
-  fetch(`${RENDER_BACKEND_URL}/api/auth/users/me`, {
-    headers: {
-      'Authorization': `Bearer ${data.session.access_token}`,
-    },
-  }).catch(error => {
-    console.warn('Background backend user sync failed (backend may be waking up):', error);
-  });
+  
+  try {
+    const response = await fetch(`${RENDER_BACKEND_URL}/api/auth/users/me`, {
+      headers: {
+        'Authorization': `Bearer ${data.session.access_token}`,
+      },
+    });
+    if (!response.ok && response.status !== 401) {
+      console.warn('Backend user sync returned status:', response.status);
+    }
+  } catch (error) {
+    console.warn('Backend user sync failed (backend may be waking up):', error);
+  }
 }
 
 export const neonData = {
   getProfile: async (): Promise<User | null> => {
     const { data: userData } = await neonClient.auth.getUser();
     if (!userData?.user) return null;
-
-    syncUserWithBackend();
-
+    
+    await syncUserWithBackend();
+    
     const neonUser = userData.user;
     return {
       id: neonUser.id,
@@ -95,20 +100,23 @@ export const neonData = {
   },
 
   getProjects: async (): Promise<ResearchProject[]> => {
-    const { data: sessionData } = await neonAuth.getSession();
-    if (!sessionData?.session?.user) return [];
+    const { data } = await neonClient.auth.getSession();
+    const token = data?.session?.access_token;
 
-    const { data, error } = await neonClient
-      .from('research_projects')
-      .select('*, paper_references(*), agent_plans(*)')
-      .eq('user_id', sessionData.session.user.id)
-      .order('created_at', { ascending: false });
+    try {
+      const res = await fetch(`${RENDER_BACKEND_URL}/api/projects`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
 
-    if (error) {
-      console.error('Error fetching projects from Neon:', error);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch projects: ${res.status}`);
+      }
+
+      const projects = await res.json();
+      return projects as ResearchProject[];
+    } catch (error) {
+      console.warn('Failed to fetch projects (backend may be waking up):', error);
       throw error;
     }
-
-    return (data || []) as ResearchProject[];
   },
 };

@@ -1,7 +1,7 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { AnimatedWorkflow } from './AnimatedWorkflow';
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { AnimatedWorkflow } from "./AnimatedWorkflow";
 
 interface HeroSectionProps {
   headline?: string;
@@ -42,7 +42,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   };
 
   return (
-    <section 
+    <section
       className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[var(--bg-page)] via-[var(--bg-surface)] to-[var(--bg-page)]"
       aria-label="Hero section"
     >
@@ -57,7 +57,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           {/* Text Content */}
           <motion.div
-            className="text-center lg:text-left"
+            className="text-center lg:text-left mt-12 sm:mt-0"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
@@ -66,11 +66,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 leading-tight tracking-tight"
               variants={itemVariants}
               style={{
-                fontFamily: 'var(--font-primary)',
-                background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
+                fontFamily: "var(--font-primary)",
+                background:
+                  "linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
               }}
             >
               {headline}
@@ -79,7 +80,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <motion.p
               className="text-lg sm:text-xl md:text-2xl mb-8 text-[var(--text-secondary)] leading-relaxed max-w-2xl mx-auto lg:mx-0"
               variants={itemVariants}
-              style={{ fontFamily: 'var(--font-content)' }}
+              style={{ fontFamily: "var(--font-content)" }}
             >
               {subheadline}
             </motion.p>
@@ -89,11 +90,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               variants={itemVariants}
             >
               <motion.button
-                onClick={() => navigate('/register')}
+                onClick={() => navigate("/register")}
                 className="px-8 py-4 rounded-[var(--radius-md)] font-semibold text-lg text-[var(--bg-page)] shadow-lg hover:shadow-xl transition-all duration-[var(--transition-standard)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2 focus:ring-offset-[var(--bg-page)]"
                 style={{
-                  background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)',
-                  fontFamily: 'var(--font-primary)',
+                  background:
+                    "linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)",
+                  fontFamily: "var(--font-primary)",
                 }}
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
@@ -103,9 +105,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </motion.button>
 
               <motion.button
-                onClick={() => navigate('/how-it-works')}
+                onClick={() => navigate("/how-it-works")}
                 className="px-8 py-4 rounded-[var(--radius-md)] font-semibold text-lg border-2 border-[var(--accent-secondary)] text-[var(--accent-secondary)] bg-transparent hover:bg-[color-mix(in_oklab,var(--accent-secondary)_8%,transparent)] transition-all duration-[var(--transition-standard)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-secondary)] focus:ring-offset-2 focus:ring-offset-[var(--bg-page)]"
-                style={{ fontFamily: 'var(--font-primary)' }}
+                style={{ fontFamily: "var(--font-primary)" }}
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
                 aria-label="Learn more about Scholar Agent"

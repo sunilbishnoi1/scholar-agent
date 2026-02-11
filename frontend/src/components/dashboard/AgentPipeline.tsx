@@ -1,59 +1,98 @@
-import { Box, Typography, LinearProgress, Chip, Paper } from "@mui/material";
+import React from "react";
+import { Box, Typography, LinearProgress, Chip, Paper, styled, keyframes } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
-import LoopIcon from "@mui/icons-material/Loop";
-import ErrorIcon from "@mui/icons-material/Error";
+import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import HubIcon from "@mui/icons-material/Hub";
+
+
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
+const pulse = keyframes`
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.9); }
+`;
+
+
+const PipelineContainer = styled(Paper)(() => ({
+  padding: "24px",
+  marginBottom: "24px",
+  backgroundColor: "rgba(24, 24, 27, 0.7)", 
+  backdropFilter: "blur(12px)",
+  border: "1px solid #27272F",
+  borderRadius: "16px",
+  color: "#F4F4F5",
+  position: "relative",
+  overflow: "hidden",
+  "&::before": {
+    content: '""',
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "4px",
+    height: "100%",
+    background: "linear-gradient(to bottom, #FFB900, #00B894)",
+  }
+}));
+
+const AgentStepBox = styled(Box, {
+  shouldForwardProp: (prop) => prop !== "isActive" && prop !== "isCompleted",
+})<{ isActive?: boolean; isCompleted?: boolean }>(({ isActive }) => ({
+  display: "flex",
+  alignItems: "center",
+  padding: "16px",
+  borderRadius: "12px",
+  transition: "all 0.3s ease",
+  backgroundColor: isActive ? "rgba(255, 185, 0, 0.08)" : "transparent",
+  border: isActive ? "1px solid rgba(255, 185, 0, 0.3)" : "1px solid transparent",
+  position: "relative",
+  zIndex: 1,
+}));
+
+const ConnectorLine = styled(Box, {
+  shouldForwardProp: (prop) => prop !== "isCompleted",
+})<{ isCompleted?: boolean }>(({ isCompleted }) => ({
+  width: "2px",
+  height: "20px",
+  marginLeft: "27px",
+  backgroundColor: isCompleted ? "#00B894" : "#27272F",
+  transition: "background-color 0.5s ease",
+}));
+
+const TerminalBox = styled(Box)(() => ({
+  marginTop: "24px",
+  backgroundColor: "#09090B",
+  border: "1px solid #27272F",
+  borderRadius: "8px",
+  padding: "16px",
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: "0.8rem",
+  color: "#A1A1AA",
+  maxHeight: "180px",
+  overflowY: "auto",
+  "&::-webkit-scrollbar": { width: "4px" },
+  "&::-webkit-scrollbar-thumb": { backgroundColor: "#3F3F46", borderRadius: "2px" },
+}));
+
+const AGENTS = [
+  { id: "planner", name: "Research Planner", desc: "Constructing heuristic search map" },
+  { id: "retriever", name: "Source Retriever", desc: "Acquiring cross-domain literature" },
+  { id: "analyzer", name: "Insight Analyzer", desc: "Extracting semantic relationships" },
+  { id: "synthesizer", name: "Synthesizer", desc: "Drafting multidimensional summary" },
+];
 
 interface AgentPipelineProps {
-  /** Currently active agent */
   currentAgent: string | null;
-  /** Overall progress percentage (0-100) */
   progress: number;
-  /** Recent log messages to display */
   logs: string[];
-  /** Whether WebSocket is connected */
   isConnected?: boolean;
-  /** Project status for determining completed state */
   projectStatus?: string;
 }
 
-interface AgentConfig {
-  id: string;
-  name: string;
-  description: string;
-}
-
-const AGENTS: AgentConfig[] = [
-  {
-    id: "planner",
-    name: "Research Planner",
-    description: "Creating search strategy",
-  },
-  {
-    id: "retriever",
-    name: "Paper Retriever",
-    description: "Fetching academic papers",
-  },
-  {
-    id: "analyzer",
-    name: "Paper Analyzer",
-    description: "Analyzing relevance & insights",
-  },
-  {
-    id: "synthesizer",
-    name: "Synthesizer",
-    description: "Writing literature review",
-  },
-];
-
-type AgentStatus = "pending" | "active" | "completed" | "error";
-
-/**
- * Visualizes the agent pipeline with real-time progress tracking.
- *
- * Shows each agent's status (pending, active, completed) and displays
- * a live activity log from WebSocket updates.
- */
 export function AgentPipeline({
   currentAgent,
   progress,
@@ -61,120 +100,65 @@ export function AgentPipeline({
   isConnected = false,
   projectStatus,
 }: AgentPipelineProps) {
-  const getAgentStatus = (agentId: string): AgentStatus => {
-    // If project is completed, all agents are completed
-    if (projectStatus === "completed") {
-      return "completed";
-    }
-
-    // If project has error, show error on current agent
+  
+  const getAgentStatus = (agentId: string) => {
+    if (projectStatus === "completed") return "completed";
     if (projectStatus?.startsWith("error")) {
-      const currentIndex = AGENTS.findIndex((a) => a.id === currentAgent);
-      const agentIndex = AGENTS.findIndex((a) => a.id === agentId);
-      if (agentIndex === currentIndex) return "error";
-      if (agentIndex < currentIndex) return "completed";
-      return "pending";
+        const currentIdx = AGENTS.findIndex(a => a.id === currentAgent);
+        const agentIdx = AGENTS.findIndex(a => a.id === agentId);
+        if (agentIdx === currentIdx) return "error";
+        return agentIdx < currentIdx ? "completed" : "pending";
     }
-
-    const agentIndex = AGENTS.findIndex((a) => a.id === agentId);
-    const currentIndex = AGENTS.findIndex((a) => a.id === currentAgent);
-
-    if (currentIndex === -1) return "pending";
-    if (agentIndex < currentIndex) return "completed";
-    if (agentIndex === currentIndex) return "active";
-    return "pending";
+    const currentIdx = AGENTS.findIndex(a => a.id === currentAgent);
+    const agentIdx = AGENTS.findIndex(a => a.id === agentId);
+    if (currentIdx === -1) return "pending";
+    if (agentIdx < currentIdx) return "completed";
+    return agentIdx === currentIdx ? "active" : "pending";
   };
 
-  const getStatusIcon = (status: AgentStatus) => {
+  const renderIcon = (status: string) => {
     switch (status) {
-      case "completed":
-        return <CheckCircleIcon sx={{ color: "success.main" }} />;
-      case "active":
-        return (
-          <LoopIcon
-            sx={{
-              color: "primary.main",
-              animation: "spin 1s linear infinite",
-              "@keyframes spin": {
-                "0%": { transform: "rotate(0deg)" },
-                "100%": { transform: "rotate(360deg)" },
-              },
-            }}
-          />
-        );
-      case "error":
-        return <ErrorIcon sx={{ color: "error.main" }} />;
-      default:
-        return <RadioButtonUncheckedIcon sx={{ color: "grey.400" }} />;
-    }
-  };
-
-  const getStatusColor = (
-    status: AgentStatus,
-  ): "success" | "primary" | "error" | "default" => {
-    switch (status) {
-      case "completed":
-        return "success";
-      case "active":
-        return "primary";
-      case "error":
-        return "error";
-      default:
-        return "default";
+      case "completed": return <CheckCircleIcon sx={{ color: "#00B894" }} />;
+      case "active": return <ChangeCircleIcon sx={{ color: "#FFB900", animation: `${spin} 3s linear infinite` }} />;
+      case "error": return <ErrorOutlineIcon sx={{ color: "#EF4444" }} />;
+      default: return <RadioButtonUncheckedIcon sx={{ color: "#3F3F46" }} />;
     }
   };
 
   return (
-    <Paper sx={{ p: 3, mb: 3 }}>
-      {/* Header with connection status */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 2,
-        }}
-      >
-        <Typography variant="h6" fontWeight="semibold">
-          Agent Pipeline
-        </Typography>
+    <PipelineContainer elevation={0}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <HubIcon sx={{ color: "#FFB900" }} />
+          <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: "-0.02em", color: "#F4F4F5" }}>
+            Neural Pipeline
+          </Typography>
+        </Box>
         <Chip
-          size="small"
-          label={isConnected ? "Live" : "Offline"}
-          color={isConnected ? "success" : "default"}
-          variant="outlined"
+          label={isConnected ? "ULTRALINK ACTIVE" : "OFFLINE"}
           sx={{
-            "& .MuiChip-label": {
-              display: "flex",
-              alignItems: "center",
-              gap: 0.5,
-            },
+            height: 24,
+            fontSize: "0.65rem",
+            fontWeight: 900,
+            backgroundColor: isConnected ? "rgba(0, 184, 148, 0.1)" : "rgba(63, 63, 70, 0.1)",
+            color: isConnected ? "#00B894" : "#71717A",
+            border: `1px solid ${isConnected ? "#00B894" : "#3F3F46"}`,
+            "& .MuiChip-icon": {
+                animation: isConnected ? `${pulse} 2s infinite` : "none",
+                color: "inherit"
+            }
           }}
-          icon={
-            <Box
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                bgcolor: isConnected ? "success.main" : "grey.400",
-                animation: isConnected ? "pulse 2s infinite" : "none",
-                "@keyframes pulse": {
-                  "0%, 100%": { opacity: 1 },
-                  "50%": { opacity: 0.5 },
-                },
-              }}
-            />
-          }
+          icon={<Box component="span" sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: "currentColor", ml: 1 }} />}
         />
       </Box>
 
-      {/* Progress Bar */}
+      {/* Global Progress Bar */}
       <Box sx={{ mb: 4 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Overall Progress
+          <Typography variant="caption" sx={{ color: "#71717A", fontWeight: 700, textTransform: "uppercase" }}>
+            Synthesis Progress
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="caption" sx={{ color: "#FFB900", fontWeight: 800 }}>
             {Math.round(progress)}%
           </Typography>
         </Box>
@@ -182,119 +166,70 @@ export function AgentPipeline({
           variant="determinate"
           value={progress}
           sx={{
-            height: 8,
-            borderRadius: 4,
-            bgcolor: "grey.200",
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: "#18181B",
             "& .MuiLinearProgress-bar": {
-              borderRadius: 4,
+              borderRadius: 3,
+              background: "linear-gradient(90deg, #FFB900 0%, #00B894 100%)",
             },
           }}
         />
       </Box>
 
       {/* Agent Steps */}
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box>
         {AGENTS.map((agent, index) => {
           const status = getAgentStatus(agent.id);
+          const isLast = index === AGENTS.length - 1;
           return (
-            <Box key={agent.id}>
-              {/* Connector line */}
-              {index > 0 && (
-                <Box
-                  sx={{
-                    position: "relative",
-                    ml: 1.5,
-                    mt: -2,
-                    mb: -1,
-                    width: 2,
-                    height: 16,
-                    bgcolor:
-                      getAgentStatus(AGENTS[index - 1].id) === "completed"
-                        ? "success.main"
-                        : "grey.300",
-                  }}
-                />
-              )}
-
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  p: 1.5,
-                  borderRadius: 2,
-                  bgcolor: status === "active" ? "primary.50" : "transparent",
-                  transition: "background-color 0.2s",
-                }}
-              >
-                {/* Status Icon */}
-                <Box sx={{ mr: 2 }}>{getStatusIcon(status)}</Box>
-
-                {/* Agent Info */}
+            <React.Fragment key={agent.id}>
+              <AgentStepBox isActive={status === "active"} isCompleted={status === "completed"}>
+                <Box sx={{ mr: 2.5, display: "flex" }}>{renderIcon(status)}</Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography
-                    variant="subtitle2"
-                    fontWeight={status === "active" ? "semibold" : "normal"}
-                  >
+                  <Typography variant="subtitle2" sx={{ 
+                    color: status === "pending" ? "#52525B" : "#F4F4F5",
+                    fontWeight: status === "active" ? 800 : 600
+                  }}>
                     {agent.name}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {agent.description}
+                  <Typography variant="caption" sx={{ color: "#71717A", display: "block", mt: -0.5 }}>
+                    {agent.desc}
                   </Typography>
                 </Box>
-
-                {/* Status Chip */}
-                <Chip
-                  size="small"
-                  label={status}
-                  color={getStatusColor(status)}
-                  variant={status === "active" ? "filled" : "outlined"}
-                />
-              </Box>
-            </Box>
+                {status === "active" && (
+                   <Typography variant="caption" sx={{ color: "#FFB900", fontWeight: 900, fontSize: '0.6rem' }}>
+                    PROCESSING...
+                   </Typography>
+                )}
+              </AgentStepBox>
+              {!isLast && <ConnectorLine isCompleted={status === "completed"} />}
+            </React.Fragment>
           );
         })}
       </Box>
 
-      {/* Live Logs */}
+      {/* Terminal Activity Log */}
       {logs.length > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Live Activity
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="caption" sx={{ color: "#71717A", fontWeight: 700, ml: 1, textTransform: "uppercase" }}>
+            Agent Telemetry
           </Typography>
-          <Box
-            sx={{
-              bgcolor: "grey.900",
-              color: "success.light",
-              p: 2,
-              borderRadius: 2,
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-              maxHeight: 160,
-              overflow: "auto",
-              "&::-webkit-scrollbar": {
-                width: 6,
-              },
-              "&::-webkit-scrollbar-thumb": {
-                bgcolor: "grey.700",
-                borderRadius: 3,
-              },
-            }}
-          >
-            {logs.slice(-10).map((log, i) => (
-              <Box key={i} sx={{ mb: 0.5, opacity: 0.7 + (i / 10) * 0.3 }}>
-                <Typography
-                  component="span"
-                  sx={{ color: "grey.500", mr: 1, fontSize: "inherit" }}
-                >
-                  [{currentAgent || "system"}]
+          <TerminalBox>
+            {logs.slice(-12).map((log, i) => (
+              <Box key={i} sx={{ mb: 0.5, opacity: 0.4 + (i / 12) * 0.6, display: "flex", gap: 1 }}>
+                <Typography component="span" sx={{ color: "#FFB900", fontSize: "inherit", fontWeight: 700 }}>
+                  &gt;
                 </Typography>
-                {log}
+                <Typography component="span" sx={{ fontSize: "inherit" }}>
+                  {log}
+                </Typography>
               </Box>
             ))}
-          </Box>
+          </TerminalBox>
         </Box>
       )}
-    </Paper>
+    </PipelineContainer>
   );
 }
 

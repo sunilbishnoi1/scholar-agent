@@ -24,7 +24,7 @@ const AuthCallbackPage: React.FC = () => {
             isAuthenticated: true,
           });
           await fetchUser();
-          navigate("/dashboard", { replace: true });
+          navigate("/", { replace: true });
         } else {
           setError("No session found. Please try logging in again.");
           setTimeout(() => navigate("/login", { replace: true }), 3000);
