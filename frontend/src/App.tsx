@@ -21,10 +21,7 @@ import { useLocation } from "react-router-dom";
 import { RENDER_BACKEND_URL } from "./config";
 
 const warmupBackend = () => {
-  console.log("Warming up backend...");
-  fetch(`${RENDER_BACKEND_URL}/api/health`).catch(() => {
-    // Ignore errors, we just want to trigger the wake up
-  });
+  fetch(`${RENDER_BACKEND_URL}/api/health`).catch(() => {});
 };
 
 const queryClient = new QueryClient();
