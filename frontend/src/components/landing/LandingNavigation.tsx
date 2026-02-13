@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import icon from '../../assets/sa-icon-192.png';
+import icon from '../../assets/SA_icon-192.png';
 
 export const LandingNavigation: React.FC = () => {
   const { isAuthenticated } = useAuthStore();

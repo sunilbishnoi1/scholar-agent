@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { getProjectById } from '../api/client';
+import { neonData } from '../api/neonClient';
 import { useProjectStore } from '../store/projectStore';
 import { toast } from 'react-toastify';
 
@@ -29,7 +29,7 @@ export const useProjectStatusPoller = (projectId?: string) => {
 
             pollingInterval.current = setInterval(async () => {
                 try {
-                    const updatedProject = await getProjectById(projectId);
+                    const updatedProject = await neonData.getProjectById(projectId);
                     const currentProject = useProjectStore.getState().projects.find(p => p.id === projectId);
 
                     if (updatedProject && JSON.stringify(currentProject) !== JSON.stringify(updatedProject)) {

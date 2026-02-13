@@ -1,5 +1,5 @@
 import { createClient, SupabaseAuthAdapter } from '@neondatabase/neon-js';
-import { NEON_AUTH_URL, NEON_DATA_API_URL, RENDER_BACKEND_URL } from '../config';
+import { NEON_AUTH_URL, NEON_DATA_API_URL } from '../config';
 import type { User, ResearchProject } from '../types';
 
 const getOAuthCallbackURL = () => {
@@ -66,31 +66,11 @@ export const neonAuth = {
   },
 };
 
-async function syncUserWithBackend(): Promise<void> {
-  const { data } = await neonClient.auth.getSession();
-  if (!data?.session?.access_token) return;
-  
-  try {
-    const response = await fetch(`${RENDER_BACKEND_URL}/api/auth/users/me`, {
-      headers: {
-        'Authorization': `Bearer ${data.session.access_token}`,
-      },
-    });
-    if (!response.ok && response.status !== 401) {
-      console.warn('Backend user sync returned status:', response.status);
-    }
-  } catch (error) {
-    console.warn('Backend user sync failed (backend may be waking up):', error);
-  }
-}
-
 export const neonData = {
   getProfile: async (): Promise<User | null> => {
     const { data: userData } = await neonClient.auth.getUser();
     if (!userData?.user) return null;
-    
-    await syncUserWithBackend();
-    
+
     const neonUser = userData.user;
     return {
       id: neonUser.id,
@@ -100,23 +80,80 @@ export const neonData = {
   },
 
   getProjects: async (): Promise<ResearchProject[]> => {
-    const { data } = await neonClient.auth.getSession();
-    const token = data?.session?.access_token;
+    const { data, error } = await neonClient
+      .from('research_projects')
+      .select('*, agent_plans(*), paper_references(*)')
+      .order('created_at', { ascending: false });
 
-    try {
-      const res = await fetch(`${RENDER_BACKEND_URL}/api/projects`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch projects: ${res.status}`);
-      }
-
-      const projects = await res.json();
-      return projects as ResearchProject[];
-    } catch (error) {
-      console.warn('Failed to fetch projects (backend may be waking up):', error);
-      throw error;
+    if (error) {
+      console.error('Failed to fetch projects from Neon:', error);
+      throw new Error(`Failed to fetch projects: ${error.message}`);
     }
+
+    return (data || []) as unknown as ResearchProject[];
+  },
+
+  getProjectById: async (projectId: string): Promise<ResearchProject> => {
+    const { data, error } = await neonClient
+      .from('research_projects')
+      .select('*, agent_plans(*), paper_references(*)')
+      .eq('id', projectId)
+      .single();
+
+    if (error) {
+      console.error('Failed to fetch project from Neon:', error);
+      throw new Error(`Failed to fetch project: ${error.message}`);
+    }
+
+    return data as unknown as ResearchProject;
+  },
+
+  deleteProject: async (projectId: string): Promise<{ id: string; deleted: boolean; message: string }> => {
+    // Delete associated records first (PostgREST doesn't support transactions,
+    // but cascading deletes should be handled by FK constraints in the DB.
+    // We delete explicitly for safety in case ON DELETE CASCADE isn't set.)
+
+    const { error: llmError } = await neonClient
+      .from('llm_interactions')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (llmError) {
+      console.warn('Failed to delete LLM interactions:', llmError);
+    }
+
+    const { error: plansError } = await neonClient
+      .from('agent_plans')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (plansError) {
+      console.warn('Failed to delete agent plans:', plansError);
+    }
+
+    const { error: papersError } = await neonClient
+      .from('paper_references')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (papersError) {
+      console.warn('Failed to delete paper references:', papersError);
+    }
+
+    const { error: projectError } = await neonClient
+      .from('research_projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (projectError) {
+      console.error('Failed to delete project from Neon:', projectError);
+      throw new Error(`Failed to delete project: ${projectError.message}`);
+    }
+
+    return {
+      id: projectId,
+      deleted: true,
+      message: 'Project and associated data deleted successfully',
+    };
   },
 };

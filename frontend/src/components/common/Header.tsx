@@ -15,7 +15,7 @@ import {
   Box,
 } from "@mui/material";
 import { useAuthStore } from "../../store/authStore";
-import icon from "../../assets/sa-icon-192.png";
+import icon from "../../assets/SA_icon-192.png";
 
 const Header = () => {
   const { isAuthenticated, logout, user, fetchUser } = useAuthStore();

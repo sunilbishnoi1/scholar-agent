@@ -80,29 +80,6 @@ const AgentJourney: React.FC = () => {
         const p1 = points[i];
         const p2 = points[i + 1];
         
-
-        
-
-
-        // Curve logic:
-        // p1 -> cp1 (x + offset? No, y based) -> cp2 -> p2
-        // We want S curve. p1 is left, p2 is right.
-        // Or p1 needs to curve OUT horizontally first?
-        
-        // Simple S-curve:
-        // C (p1.x) (p1.y + dy/2) (p2.x) (p2.y - dy/2) p2.x p2.y
-        // This is vertical S-curve.
-        
-        // But our points are also horizontally separated significantly.
-        // We want to exit p1 horizontally and enter p2 horizontally?
-        // Or exit vertically?
-        // Let's try vertical exit for "waterfall" feel or horizontal exit for "flow".
-        // Given layout "Line starts near card...", it might look better if it flows vertically between layers.
-        
-        // Let's use standard vertical cubic bezier:
-        // cp1 = p1.x, p1.y + (p2.y - p1.y) * 0.5
-        // cp2 = p2.x, p2.y - (p2.y - p1.y) * 0.5
-        
         const dy = p2.y - p1.y;
         
         const cp1x = p1.x;
@@ -117,16 +94,13 @@ const AgentJourney: React.FC = () => {
     setSvgPath(d);
   }, []);
 
-  // Measure path length when path changes
   useEffect(() => {
       if (pathRef.current) {
           setPathLength(pathRef.current.getTotalLength());
       }
   }, [svgPath]);
 
-  // Handle Resize and Scroll
   useEffect(() => {
-    // Initial calculation after a brief delay to ensure layout is settled
     const timer = setTimeout(calculatePath, 100);
     
     window.addEventListener('resize', calculatePath);
@@ -137,10 +111,6 @@ const AgentJourney: React.FC = () => {
     };
   }, [calculatePath]);
 
-  // Recalculate on scroll (for sticky nav bars adjustment etc, though mostly resize matters)
-  // Actually, position of elements inside container doesn't change on scroll RELATIVE to container usually.
-  // But we need to track scroll progress.
-
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
 
@@ -148,19 +118,12 @@ const AgentJourney: React.FC = () => {
     const windowHeight = window.innerHeight;
     const componentHeight = rect.height;
 
-    // Calculate progress
-    // We want the line to draw as the center of the viewport hits the sections.
-    // Or just simple intersection ratio.
+    const currentPos = (windowHeight * 0.5) - rect.top;
     
-    const currentPos = (windowHeight * 0.5) - rect.top; // How far we are into the component
-    
-    // Clamp 0 to 1
     const progress = Math.max(0, Math.min(1, currentPos / (componentHeight * 0.9))); 
-    // 0.9 factor ensures it fills before we completely scroll past
     
     setScrollProgress(progress);
 
-    // Active index based on progress
     const agentIndex = Math.floor(progress * agentsData.length);
     setActiveIndex(Math.min(agentIndex, agentsData.length - 1));
     
@@ -168,7 +131,7 @@ const AgentJourney: React.FC = () => {
 
   useEffect(() => {
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll(); // Initial check
+    handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ResearchProject, ProjectCreate } from '../types';
-import { createProject, deleteProject } from '../api/client';
+import { createProject } from '../api/client';
 import { neonData } from '../api/neonClient';
 import { toast } from 'react-toastify';
 
@@ -81,7 +81,7 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
         }));
 
         try {
-            await deleteProject(projectId);
+            await neonData.deleteProject(projectId);
             toast.success(`Project "${projectToDelete.title}" deleted successfully`);
             return true;
         } catch (error) {

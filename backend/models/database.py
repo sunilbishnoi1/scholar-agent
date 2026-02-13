@@ -44,7 +44,9 @@ class ResearchProject(Base):
     keywords = Column(JSON)
     subtopics = Column(JSON)
     status = Column(String, default="planning")
-    total_papers_found = Column(Integer, default=0)  # <-- ADDED
+    total_papers_found = Column(Integer, default=0)
+    report = Column(JSON)  # <-- ADDED for v2 structured output
+    report_status = Column(String, default="empty")  # empty, analysis_only, partial, complete
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="research_projects")
     agent_plans = relationship("AgentPlan", back_populates="project")

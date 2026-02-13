@@ -1,17 +1,27 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { User } from '../types';
-import {type LoginCredentials, type RegisterCredentials } from '../api/client';
 import { neonAuth, neonData } from '../api/neonClient';
 import { useProjectStore } from './projectStore';
 import { toast } from 'react-toastify';
+
+interface LoginCredentials {
+    username: string;
+    password: string;
+}
+
+interface RegisterCredentials {
+    email: string;
+    password: string;
+    name: string;
+}
 
 interface AuthState {
     user: User | null;
     token: string | null;
     isAuthenticated: boolean;
     isInitialized: boolean;
-    fetchUser: () => Promise<void>; 
+    fetchUser: () => Promise<void>;
     login: (credentials: LoginCredentials) => Promise<boolean>;
     loginWithOAuth: (provider: 'google' | 'github') => Promise<void>;
     register: (credentials: RegisterCredentials) => Promise<boolean>;
@@ -33,25 +43,25 @@ export const useAuthStore = create(
                     if (sessionData?.session) {
                         const token = sessionData.session.access_token;
                         const profile = await neonData.getProfile();
-                        set({ 
-                            user: profile, 
+                        set({
+                            user: profile,
                             token,
                             isAuthenticated: true,
                             isInitialized: true,
                         });
                     } else {
-                        set({ 
-                            user: null, 
-                            token: null, 
+                        set({
+                            user: null,
+                            token: null,
                             isAuthenticated: false,
                             isInitialized: true,
                         });
                     }
                 } catch (error) {
                     console.error("Failed to initialize auth:", error);
-                    set({ 
-                        user: null, 
-                        token: null, 
+                    set({
+                        user: null,
+                        token: null,
                         isAuthenticated: false,
                         isInitialized: true,
                     });
@@ -92,8 +102,8 @@ export const useAuthStore = create(
                     await get().fetchUser();
                     return true;
                 } catch (error: unknown) {
-                    const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail 
-                        || (error as { message?: string })?.message 
+                    const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                        || (error as { message?: string })?.message
                         || "Login failed. Please check your credentials.";
                     toast.error(errorMessage);
                     return false;
@@ -104,7 +114,7 @@ export const useAuthStore = create(
                     const { error } = await neonAuth.signInWithOAuth(provider);
                     if (error) throw error;
                 } catch (error: unknown) {
-                    const errorMessage = (error as { message?: string })?.message 
+                    const errorMessage = (error as { message?: string })?.message
                         || `OAuth login with ${provider} failed.`;
                     toast.error(errorMessage);
                 }
@@ -115,8 +125,8 @@ export const useAuthStore = create(
                     if (error) throw error;
                     return await get().login({ username: credentials.email, password: credentials.password });
                 } catch (error: unknown) {
-                    const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail 
-                        || (error as { message?: string })?.message 
+                    const errorMessage = (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+                        || (error as { message?: string })?.message
                         || "Registration failed.";
                     toast.error(errorMessage);
                     return false;
@@ -136,9 +146,9 @@ export const useAuthStore = create(
         {
             name: 'auth-storage',
             storage: createJSONStorage(() => localStorage),
-            partialize: (state) => ({ 
-                token: state.token, 
-                isAuthenticated: state.isAuthenticated 
+            partialize: (state) => ({
+                token: state.token,
+                isAuthenticated: state.isAuthenticated
             } as AuthState),
             onRehydrateStorage: () => (state) => {
                 if (state) {
