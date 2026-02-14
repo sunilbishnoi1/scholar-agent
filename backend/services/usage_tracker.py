@@ -173,13 +173,13 @@ class UsageTracker:
         completion_tokens: int,
         cost_usd: float,
         latency_ms: int,
-        project_id: str = None,
-        task_type: str = None,
-        prompt_preview: str = None,
-        response_preview: str = None,
+        project_id: str | None = None,
+        task_type: str | None = None,
+        prompt_preview: str | None = None,
+        response_preview: str | None = None,
         success: bool = True,
-        error_message: str = None,
-        metadata: dict = None,
+        error_message: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Record an LLM interaction and update usage counters.
@@ -290,7 +290,10 @@ class UsageTracker:
         }
 
     def get_usage_analytics(
-        self, user_id: str, start_date: date = None, end_date: date = None
+        self,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> dict[str, Any]:
         """
         Get detailed analytics for a user's usage.

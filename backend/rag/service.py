@@ -104,6 +104,7 @@ class RAGService:
             Dict with ingestion statistics
         """
         self._ensure_initialized()
+        assert self.vector_store is not None
 
         if not papers:
             return {"chunks_ingested": 0, "papers_processed": 0}
@@ -165,6 +166,7 @@ class RAGService:
             List of search results as dictionaries
         """
         self._ensure_initialized()
+        assert self.vector_store is not None
 
         logger.debug(f"Searching for '{query[:50]}...' in project {project_id}")
 
@@ -317,6 +319,7 @@ class RAGService:
             Dict with deletion stats
         """
         self._ensure_initialized()
+        assert self.vector_store is not None
 
         logger.info(f"Deleting RAG data for project {project_id}")
 
@@ -346,6 +349,7 @@ class RAGService:
     def get_embedding_stats(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         self._ensure_initialized()
+        assert self.embedding_service is not None
         return self.embedding_service.get_stats()
 
 

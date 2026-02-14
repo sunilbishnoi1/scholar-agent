@@ -94,6 +94,10 @@ class BaseAgent(ABC):
         return response
 
 
+from collections.abc import Callable
+
+...
+
 class ToolEnabledAgent(BaseAgent):
     """
     Extended base class for agents that use tools.
@@ -104,9 +108,9 @@ class ToolEnabledAgent(BaseAgent):
 
     def __init__(self, llm_client, name: str):
         super().__init__(llm_client, name)
-        self.tools: dict[str, callable] = {}
+        self.tools: dict[str, dict[str, Any]] = {}
 
-    def register_tool(self, name: str, func: callable, description: str = "") -> None:
+    def register_tool(self, name: str, func: Callable, description: str = "") -> None:
         """
         Register a tool that this agent can use.
 
@@ -118,7 +122,7 @@ class ToolEnabledAgent(BaseAgent):
         self.tools[name] = {"function": func, "description": description}
         self.logger.debug(f"Registered tool: {name}")
 
-    def get_available_tools(self) -> list[dict]:
+    def get_available_tools(self) -> list[dict[str, Any]]:
         """Get list of available tools with descriptions."""
         return [
             {"name": name, "description": tool["description"]} for name, tool in self.tools.items()

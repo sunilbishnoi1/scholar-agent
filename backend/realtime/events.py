@@ -60,9 +60,9 @@ class AgentEvent:
     data: dict[str, Any] | None = None
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        result = {
+        result: dict[str, Any] = {
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
             "timestamp": self.timestamp,
         }
@@ -91,7 +91,7 @@ class AgentEvent:
 
 
 def create_status_event(
-    project_id: str, agent: str, status: str, message: str = None
+    project_id: str, agent: str, status: str, message: str | None = None
 ) -> AgentEvent:
     """Create a status update event."""
     return AgentEvent(
@@ -107,9 +107,9 @@ def create_progress_event(
     project_id: str,
     agent: str,
     progress: float,
-    message: str = None,
-    current: int = None,
-    total: int = None,
+    message: str | None = None,
+    current: int | None = None,
+    total: int | None = None,
 ) -> AgentEvent:
     """Create a progress update event."""
     data = {"progress_percent": progress}
@@ -140,7 +140,7 @@ def create_log_event(project_id: str, agent: str, message: str, level: str = "in
 
 
 def create_paper_event(
-    project_id: str, event_type: EventType, paper_title: str, paper_data: dict = None
+    project_id: str, event_type: EventType, paper_title: str, paper_data: dict[str, Any] | None = None
 ) -> AgentEvent:
     """Create a paper-related event."""
     data = {"paper_title": paper_title}
@@ -157,7 +157,10 @@ def create_paper_event(
 
 
 def create_completion_event(
-    project_id: str, success: bool, summary: dict = None, error_message: str = None
+    project_id: str,
+    success: bool,
+    summary: dict[str, Any] | None = None,
+    error_message: str | None = None,
 ) -> AgentEvent:
     """Create a project completion event."""
     if success:
@@ -272,12 +275,13 @@ class AgentProgressTracker:
         tracker.complete_agent("retriever")
     """
 
-    AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer"]
+    AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer", "quality_checker"]
     AGENT_WEIGHTS = {
-        "planner": 10,  # 10% of total progress
-        "retriever": 20,  # 20% of total progress
-        "analyzer": 50,  # 50% of total progress
-        "synthesizer": 20,  # 20% of total progress
+        "planner": 10,  # 10%
+        "retriever": 20,  # 20%
+        "analyzer": 40,  # 40%
+        "synthesizer": 20,  # 20%
+        "quality_checker": 10,  # 10%
     }
 
     def __init__(self, project_id: str):
@@ -291,7 +295,7 @@ class AgentProgressTracker:
         total = 0.0
 
         for agent in self.AGENT_ORDER:
-            weight = self.AGENT_WEIGHTS.get(agent, 25)
+            weight = self.AGENT_WEIGHTS.get(agent, 20)
 
             if agent in self.completed_agents:
                 total += weight
@@ -301,7 +305,7 @@ class AgentProgressTracker:
 
         return min(total, 100)
 
-    def start_agent(self, agent: str, message: str = None):
+    def start_agent(self, agent: str, message: str | None = None):
         """Signal that an agent has started."""
         self.current_agent = agent
         self.agent_progress[agent] = 0
@@ -316,7 +320,7 @@ class AgentProgressTracker:
         )
         sync_broadcast_agent_update(self.project_id, event)
 
-    def complete_agent(self, agent: str, message: str = None):
+    def complete_agent(self, agent: str, message: str | None = None):
         """Signal that an agent has completed."""
         self.agent_progress[agent] = 100
         if agent not in self.completed_agents:
@@ -332,7 +336,7 @@ class AgentProgressTracker:
         )
         sync_broadcast_agent_update(self.project_id, event)
 
-    def update_progress(self, agent_progress: float, message: str = None):
+    def update_progress(self, agent_progress: float, message: str | None = None):
         """Update progress within the current agent."""
         if not self.current_agent:
             return
@@ -349,6 +353,33 @@ class AgentProgressTracker:
         )
         sync_broadcast_agent_update(self.project_id, event)
 
+    def progress_callback_adapter(self, agent_name: str, message: str, percent: float):
+        """
+        Adapter to match the callback signature expected by ResearchOrchestrator.
+
+        Orchestrator calls: callback(agent_name, message, percent)
+        """
+        # Normalize agent name to match our keys (e.g. "synthesizer_agent" -> "synthesizer")
+        normalized_agent = agent_name.lower().replace("_agent", "")
+
+        # Handle agent transitions
+        if self.current_agent != normalized_agent:
+            # If we were tracking another agent, complete it (implicitly)
+            if self.current_agent and self.current_agent not in self.completed_agents:
+                self.complete_agent(self.current_agent)
+
+            # Start the new agent
+            if normalized_agent != self.current_agent:
+                self.start_agent(normalized_agent, message)
+
+        # Update progress
+        # Note: Orchestrator might send 100% which triggers completion in their logic,
+        # but we handle completion explicitly or via 100% here.
+        if percent >= 100:
+            self.complete_agent(normalized_agent, message)
+        else:
+            self.update_progress(percent, message)
+
     def log(self, message: str, level: str = "info"):
         """Log a message for the current agent."""
         event = create_log_event(
@@ -359,7 +390,7 @@ class AgentProgressTracker:
         )
         sync_broadcast_agent_update(self.project_id, event)
 
-    def paper_found(self, title: str, data: dict = None):
+    def paper_found(self, title: str, data: dict[str, Any] | None = None):
         """Notify that a paper was found."""
         event = create_paper_event(
             project_id=self.project_id,
@@ -372,9 +403,9 @@ class AgentProgressTracker:
     def paper_analyzed(
         self,
         title: str,
-        relevance_score: float = None,
-        current: int = None,
-        total: int = None,
+        relevance_score: float | None = None,
+        current: int | None = None,
+        total: int | None = None,
     ):
         """Notify that a paper was analyzed.
 
