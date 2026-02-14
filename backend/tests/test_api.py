@@ -46,6 +46,8 @@ def client(setup_test_db):
 def mock_db_session():
     """Create a mock database session."""
     mock = MagicMock()
+    # Handle both direct queries and queries with options
+    mock.query.return_value.options.return_value = mock.query.return_value
     mock.query.return_value.filter.return_value.first.return_value = None
     mock.query.return_value.filter.return_value.all.return_value = []
     return mock
@@ -110,6 +112,8 @@ def authenticated_client(setup_test_db, mock_user, mock_project):
     # Create mock db session
     mock_db = MagicMock()
     # Set up default return values for common queries
+    # Handle cases with and without .options()
+    mock_db.query.return_value.options.return_value = mock_db.query.return_value
     mock_db.query.return_value.filter.return_value.first.return_value = mock_project
     mock_db.query.return_value.filter.return_value.all.return_value = [mock_project]
 
@@ -371,6 +375,7 @@ class TestProjectsEndpoints:
         from main import app
 
         mock_db = MagicMock()
+        mock_db.query.return_value.options.return_value = mock_db.query.return_value
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         app.dependency_overrides[auth.get_current_user] = lambda: mock_user
@@ -433,6 +438,7 @@ class TestProjectsEndpoints:
         from main import app
 
         mock_db = MagicMock()
+        mock_db.query.return_value.options.return_value = mock_db.query.return_value
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         app.dependency_overrides[auth.get_current_user] = lambda: mock_user
@@ -579,6 +585,7 @@ class TestSearchEndpoints:
         from main import app
 
         mock_db = MagicMock()
+        mock_db.query.return_value.options.return_value = mock_db.query.return_value
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         app.dependency_overrides[auth.get_current_user] = lambda: mock_user
