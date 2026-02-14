@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Literal
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from agents.analyzer_agent import PaperAnalyzerAgent
 from agents.planner_agent import ResearchPlannerAgent
@@ -70,7 +71,7 @@ class ResearchOrchestrator:
 
         logger.info("ResearchOrchestrator initialized with LangGraph pipeline")
 
-    def _build_graph(self) -> StateGraph:
+    def _build_graph(self) -> CompiledStateGraph:
         """
         Build the LangGraph state machine.
 

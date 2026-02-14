@@ -289,7 +289,7 @@ class AcademicVectorStore:
         query_embedding = self.embedding_service.embed(query)
 
         # Build filter
-        filter_conditions = [
+        filter_conditions: list[qdrant_models.Condition] = [
             FieldCondition(
                 key="project_id",
                 match=MatchValue(value=project_id),
@@ -322,7 +322,7 @@ class AcademicVectorStore:
         # Convert to SearchResult objects
         search_results = []
         for hit in results:
-            payload = hit.payload
+            payload = hit.payload or {}
             search_results.append(
                 SearchResult(
                     chunk_id=str(hit.id),
@@ -416,8 +416,15 @@ class AcademicVectorStore:
             "vectors_count": info.vectors_count,
             "points_count": info.points_count,
             "status": info.status.value,
-            "optimizer_status": info.optimizer_status.status.value,
         }
+        
+        # optimizer_status might be a different structure depending on Qdrant version
+        if hasattr(info.optimizer_status, "status"):
+            stats["optimizer_status"] = getattr(info.optimizer_status, "status").value
+        else:
+            stats["optimizer_status"] = str(info.optimizer_status)
+
+        return stats
 
 
 # Singleton instance

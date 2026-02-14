@@ -451,9 +451,9 @@ Brief academic paragraph:"""
             # Update final scores from reranker
             rerank_map = {r.metadata["chunk_id"]: r.combined_score for r in reranked}
 
-            for result in hybrid_results:
-                if result.chunk_id in rerank_map:
-                    result.final_score = rerank_map[result.chunk_id]
+            for h_result in hybrid_results:
+                if h_result.chunk_id in rerank_map:
+                    h_result.final_score = rerank_map[h_result.chunk_id]
 
             # Re-sort by final score
             hybrid_results.sort(key=lambda x: x.final_score, reverse=True)
