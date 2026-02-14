@@ -6,7 +6,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
-import markdown
+import markdown  # type: ignore
 from celery import Celery
 from dotenv import load_dotenv
 
@@ -855,6 +855,8 @@ def run_literature_review(self, project_id: str, max_papers: int):
 
     task_engine = create_engine(
         os.environ.get("DATABASE_URL", "sqlite:///./test.db"),
+        pool_pre_ping=True,
+        pool_recycle=280,
         connect_args=(
             {"check_same_thread": False, "timeout": 15}
             if "sqlite" in os.environ.get("DATABASE_URL", "sqlite:///./test.db")
@@ -862,16 +864,9 @@ def run_literature_review(self, project_id: str, max_papers: int):
         ),
     )
     TaskSession = scoped_session(sessionmaker(bind=task_engine))
-    db = TaskSession()
-    llm_client = get_llm_client()
-
-    tracker = AgentProgressTracker(project_id)
-
-    orchestrator = ResearchOrchestrator(
-        llm_client=llm_client, progress_callback=tracker.progress_callback_adapter
-    )
 
     try:
+        db = TaskSession()
         project = (
             db.query(ResearchProject)
             .options(joinedload(ResearchProject.user))
@@ -881,24 +876,48 @@ def run_literature_review(self, project_id: str, max_papers: int):
         if not project:
             return {"status": "error", "error": "Project not found"}
 
-        # Run the orchestrator pipeline
+        # Extract necessary data to local variables so we can close the DB connection
+        user_id = project.user_id
+        project_title = project.title
+        research_question = project.research_question
+        user_email = project.user.email if project.user else None
+        user_name: str = str(project.user.name) if project.user and project.user.name else "User"
+
+        # Explicitly close the session to release the connection
+        db.close()
+        TaskSession.remove()
+
+    except Exception as e:
+        logging.error(f"Failed to read project {project_id}: {e}")
+        return {"status": "error", "error": str(e)}
+
+    llm_client = get_llm_client()
+    tracker = AgentProgressTracker(project_id)
+    orchestrator = ResearchOrchestrator(
+        llm_client=llm_client, progress_callback=tracker.progress_callback_adapter
+    )
+
+    try:
         final_state = orchestrator.run_sync(
             project_id=project_id,
-            user_id=project.user_id,
-            title=project.title,
-            research_question=project.research_question,
+            user_id=user_id,
+            title=project_title,
+            research_question=research_question,
             max_papers=max_papers,
         )
 
-        # Update project with results from final_state
+        db = TaskSession()
+        project = db.query(ResearchProject).filter(ResearchProject.id == project_id).first()
+        if not project:
+            logging.error(f"Project {project_id} disappeared during processing")
+            return {"status": "error", "error": "Project disappeared"}
+
         project.status = final_state.get("status", "completed")
         project.total_papers_found = final_state.get("total_papers_found", 0)
 
-        # --- CRITICAL FIX: Save analyzed papers to paper_references table ---
         analyzed_papers = final_state.get("analyzed_papers", [])
         if analyzed_papers:
             for paper in analyzed_papers:
-                # Handle both PaperAnalysis model and dict cases
                 if hasattr(paper, "model_dump"):
                     paper_data = paper.model_dump()
                 elif hasattr(paper, "__dict__"):
@@ -906,7 +925,6 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 else:
                     paper_data = paper
 
-                # Create PaperReference record
                 paper_ref = PaperReference(
                     project_id=project_id,
                     title=paper_data.get("title", "Untitled"),
@@ -921,10 +939,8 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 f"Saved {len(analyzed_papers)} papers to database for project {project_id}"
             )
 
-        # --- CRITICAL FIX: Create analyzer agent plan with analysis results ---
         if final_state.get("analyzer_output"):
             analyzer_output = final_state["analyzer_output"]
-            # Convert analyzer output to plan format
             analyses_summary = []
             if hasattr(analyzer_output, "paper_analyses"):
                 analyses = analyzer_output.paper_analyses
@@ -962,31 +978,20 @@ def run_literature_review(self, project_id: str, max_papers: int):
             db.add(analyzer_plan)
             logging.info(f"Created analyzer agent plan for project {project_id}")
 
-        # Save structured report if available
         if final_state.get("report"):
-            # Ensure it's a dict for JSON column
             report_data = final_state["report"]
             if hasattr(report_data, "model_dump"):
-                # Pydantic v2
                 report_data = report_data.model_dump()
             elif hasattr(report_data, "dict"):
-                # Pydantic v1
                 report_data = report_data.dict()
-            # Handle datetime serialization
             report_data = json.loads(json.dumps(report_data, default=str))
             project.report = report_data
             project.report_status = "complete" if project.status == "completed" else "partial"
-
-        # --- CRITICAL FIX: Create synthesizer agent plan with synthesis output as markdown ---
-        # Extract synthesis output for frontend (must be in plan_steps[0].output.response format)
         if final_state.get("synthesis"):
             synthesis_output = final_state["synthesis"]
         elif final_state.get("report"):
-            # Extract basic text from report for legacy email/fields
             report = final_state["report"]
-            # Handle both dict and Pydantic model cases
             if hasattr(report, "metadata"):
-                # Pydantic model
                 title = (
                     report.metadata.title
                     if hasattr(report.metadata, "title")
@@ -994,16 +999,14 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 )
                 summary = report.executive_summary if hasattr(report, "executive_summary") else ""
             else:
-                # Dict case
                 title = report.get("metadata", {}).get("title") or report.get(
-                    "title", project.title
+                    "title", project_title
                 )
                 summary = report.get("executive_summary", "")
             synthesis_output = f"# {title}\n\n{summary}"
         else:
             synthesis_output = ""
 
-        # Create synthesizer agent plan with the synthesis output as markdown string
         synthesizer_plan = AgentPlan(
             id=str(uuid.uuid4()),
             project_id=project_id,
@@ -1033,18 +1036,16 @@ def run_literature_review(self, project_id: str, max_papers: int):
 
         db.commit()
 
-        # Notify completion
         tracker.complete(
             papers_analyzed=len(final_state.get("analyzed_papers", [])),
             synthesis_words=len(synthesis_output.split()),
         )
 
-        # --- send completion email ---
-        if project.user and synthesis_output:
+        if user_email and synthesis_output:
             send_completion_email(
-                user_email=project.user.email,
-                user_name=project.user.name,
-                project_title=project.title,
+                user_email=user_email,
+                user_name=user_name,
+                project_title=project_title,
                 synthesis_output=synthesis_output,
             )
 
@@ -1058,17 +1059,20 @@ def run_literature_review(self, project_id: str, max_papers: int):
             exc_info=True,
         )
 
-        # Notify error via tracker
-        tracker.error(f"Error: {e!s}")
-
-        # Try to complete with partial results instead of failing completely
         try:
+            tracker.error(f"Error: {e!s}")
+        except:
+            pass
+        try:
+            db = TaskSession()
             project_to_update = (
                 db.query(ResearchProject).filter(ResearchProject.id == project_id).first()
             )
-            analyzed_from_state = final_state.get("analyzed_papers", [])
+            analyzed_from_state = (
+                final_state.get("analyzed_papers", []) if "final_state" in locals() else []
+            )
+
             if project_to_update and analyzed_from_state:
-                # We have some analyses - try to complete with what we have
                 logging.info(
                     f"Attempting to complete project {project_id} with partial results "
                     f"({len(analyzed_from_state)} papers)"
@@ -1077,14 +1081,12 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 fallback_papers = [
                     p.get("title", f"Paper {i}") for i, p in enumerate(analyzed_from_state)
                 ]
-                fallback_response = _create_fallback_synthesis(
-                    (
-                        project_to_update.subtopics[0]
-                        if project_to_update.subtopics
-                        else "Literature Review"
-                    ),
-                    fallback_papers,
-                )
+                subtopic = "Literature Review"
+                if project_to_update.subtopics:
+                    subtopic = project_to_update.subtopics[0]
+
+                fallback_response = _create_fallback_synthesis(subtopic, fallback_papers)
+
                 synthesizer_plan = AgentPlan(
                     id=str(uuid.uuid4()),
                     project_id=project_id,
@@ -1111,10 +1113,17 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 db.commit()
         except Exception as recovery_error:
             logging.error(f"Recovery also failed: {recovery_error}")
-            db.rollback()
+            try:
+                db.rollback()
+            except:
+                pass
         raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except:
+            pass
+        TaskSession.remove()
 
 
 def _create_fallback_synthesis(subtopic: str, paper_analyses: list[str]) -> str:
@@ -1131,19 +1140,16 @@ def _create_fallback_synthesis(subtopic: str, paper_analyses: list[str]) -> str:
         "## Key Papers Analyzed\n\n",
     ]
 
-    # Extract titles and key points from analyses
-    for i, analysis in enumerate(paper_analyses[:10], 1):  # Limit to first 10
-        # Try to extract title from analysis
+    for i, analysis in enumerate(paper_analyses[:10], 1):
         lines = analysis.split("\n")
         title = f"Paper {i}"
-        for line in lines[:5]:  # Check first 5 lines
+        for line in lines[:5]:
             if "title" in line.lower() or line.startswith("#"):
                 title = line.replace("#", "").replace("Title:", "").strip()[:100]
                 break
 
         synthesis_parts.append(f"### {title}\n\n")
 
-        # Get first few meaningful lines as summary
         content_lines = [line for line in lines if line.strip() and not line.startswith("#")][:3]
         if content_lines:
             synthesis_parts.append(" ".join(content_lines)[:500] + "...\n\n")
