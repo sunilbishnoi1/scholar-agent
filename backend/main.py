@@ -10,7 +10,6 @@ import markdown
 from celery import Celery
 from dotenv import load_dotenv
 
-# Initialize logger
 logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,13 +18,14 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sib_api_v3_sdk.rest import ApiException
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
+from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker, selectinload
 
 load_dotenv()
 
 import auth
 from agents.llm import get_llm_client
 from agents.planner import ResearchPlannerAgent
+from agents.schemas import ResearchReport
 from db import engine, get_db
 from models.database import AgentPlan, Base, LLMInteraction, PaperReference, ResearchProject, User
 from paper_retriever import PaperRetriever
@@ -39,19 +39,22 @@ except ImportError:
 
 def create_db_and_tables():
     """Initialize database tables and run schema migrations."""
+    print("DEBUG: create_db_and_tables called", flush=True)
     try:
-        # First, create all tables defined in models
+        print("DEBUG: Calling Base.metadata.create_all", flush=True)
         Base.metadata.create_all(bind=engine)
         logging.info("Database tables created/verified successfully.")
+        print("DEBUG: Base.metadata.create_all done", flush=True)
 
-        # Run schema migrations for missing columns on existing tables
         _run_schema_migrations()
 
-        # Verify the schema is correct
         _verify_schema()
+
+        print("DEBUG: create_db_and_tables finished successfully", flush=True)
 
     except Exception as e:
         logging.error(f"Error during database initialization: {e}", exc_info=True)
+        print(f"DEBUG: Error during database initialization: {e}", flush=True)
         raise
 
 
@@ -75,7 +78,6 @@ def _is_postgresql() -> bool:
 def _get_existing_columns(conn, table_name: str) -> set:
     """Get existing columns for a table, handling both PostgreSQL and SQLite."""
     if _is_postgresql():
-        # PostgreSQL: Query information_schema with proper schema filter
         result = conn.execute(
             text("""
             SELECT column_name 
@@ -86,9 +88,7 @@ def _get_existing_columns(conn, table_name: str) -> set:
             {"table_name": table_name},
         )
     else:
-        # SQLite: Use pragma
         result = conn.execute(text(f"PRAGMA table_info({table_name})"))
-        # SQLite returns: (cid, name, type, notnull, dflt_value, pk)
         return {row[1] for row in result.fetchall()}
 
     return {row[0] for row in result.fetchall()}
@@ -104,10 +104,8 @@ def _add_column_if_not_exists(
 
     try:
         if _is_postgresql():
-            # PostgreSQL 9.6+ supports IF NOT EXISTS
             sql = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {column_def}"
         else:
-            # SQLite doesn't support IF NOT EXISTS, but we already checked
             sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}"
 
         conn.execute(text(sql))
@@ -132,11 +130,11 @@ def _run_schema_migrations():
     logging.info(
         f"Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})"
     )
+    print(f"DEBUG: Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})", flush=True)
 
     try:
-        # Use engine.begin() for automatic transaction commit/rollback (SQLAlchemy 2.0)
         with engine.begin() as conn:
-            # Check if users table exists
+            table_exists = False
             if _is_postgresql():
                 result = conn.execute(text("""
                     SELECT EXISTS (
@@ -152,50 +150,60 @@ def _run_schema_migrations():
                 )
                 table_exists = result.fetchone() is not None
 
+            print(f"DEBUG: users table exists: {table_exists}", flush=True)
+
             if not table_exists:
                 logging.info("Users table does not exist yet, skipping migrations.")
-                return
+                
+            if table_exists:
+                existing_columns = _get_existing_columns(conn, "users")
+                logging.info(f"Existing columns in 'users' table: {existing_columns}")
 
-            # Get existing columns
-            existing_columns = _get_existing_columns(conn, "users")
-            logging.info(f"Existing columns in 'users' table: {existing_columns}")
+                if existing_columns:
+                    migrations = [
+                        ("tier", "VARCHAR(50) DEFAULT 'free'"),
+                        (
+                            "monthly_budget_usd",
+                            "DOUBLE PRECISION DEFAULT 1.0",
+                        ),  # DOUBLE PRECISION is PostgreSQL's FLOAT
+                    ]
 
-            if not existing_columns:
-                logging.warning("No columns found in users table, this is unexpected.")
-                return
+                    if not _is_postgresql():
+                        migrations = [
+                            ("tier", "VARCHAR(50) DEFAULT 'free'"),
+                            ("monthly_budget_usd", "REAL DEFAULT 1.0"),  # SQLite uses REAL for floats
+                        ]
 
-            # Define migrations: (column_name, column_definition)
-            migrations = [
-                ("tier", "VARCHAR(50) DEFAULT 'free'"),
-                (
-                    "monthly_budget_usd",
-                    "DOUBLE PRECISION DEFAULT 1.0",
-                ),  # DOUBLE PRECISION is PostgreSQL's FLOAT
-            ]
+                    success_count = 0
+                    for column_name, column_def in migrations:
+                        if _add_column_if_not_exists(
+                            conn, "users", column_name, column_def, existing_columns
+                        ):
+                            success_count += 1
+            
+            proj_columns = _get_existing_columns(conn, "research_projects")
+            logging.info(f"Existing columns in 'research_projects': {proj_columns}")
+            print(f"DEBUG: Existing columns in 'research_projects': {proj_columns}", flush=True)
 
-            # For SQLite, use different type names
-            if not _is_postgresql():
-                migrations = [
-                    ("tier", "VARCHAR(50) DEFAULT 'free'"),
-                    ("monthly_budget_usd", "REAL DEFAULT 1.0"),  # SQLite uses REAL for floats
+            if proj_columns:
+                proj_migrations = [
+                    ("report", "JSON" if not _is_postgresql() else "JSONB"),
+                    ("report_status", "VARCHAR(50) DEFAULT 'empty'"),
                 ]
 
-            success_count = 0
-            for column_name, column_def in migrations:
-                if _add_column_if_not_exists(
-                    conn, "users", column_name, column_def, existing_columns
-                ):
-                    success_count += 1
+                for col_name, col_def in proj_migrations:
+                    _add_column_if_not_exists(
+                        conn, "research_projects", col_name, col_def, proj_columns
+                    )
 
             logging.info(
-                f"Schema migrations completed: {success_count}/{len(migrations)} columns processed."
+                f"Schema migrations completed."
             )
-
-        # Transaction is auto-committed when exiting begin() context successfully
 
     except Exception as e:
         logging.error(f"Schema migration failed: {e}", exc_info=True)
-        raise  # Re-raise to prevent app from starting with broken schema
+        print(f"DEBUG: Schema migration failed: {e}", flush=True)
+        raise
 
 
 def _verify_schema():
@@ -270,17 +278,25 @@ origins = _get_cors_origins()
 logging.info(f"CORS origins configured: {origins}")
 
 
-# Global exception handler to ensure CORS headers are always sent
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    origin = request.headers.get("origin")
+    headers = {"Access-Control-Allow-Credentials": "true"}
+    
+    if origin and (origin in origins or "*" in origins):
+        headers["Access-Control-Allow-Origin"] = origin
+    elif origins:
+        headers["Access-Control-Allow-Origin"] = origins[0]
+        
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"},
+        content={"detail": "Internal server error", "error_message": str(exc)},
+        headers=headers
     )
 
 
-# CORS middleware must be added AFTER exception handlers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -291,7 +307,6 @@ app.add_middleware(
 )
 
 
-# --- Root endpoint for health checks and API discovery ---
 @app.get("/")
 def root():
     """
@@ -307,15 +322,6 @@ def root():
     }
 
 
-# def get_db():
-#     db = SessionLocal()
-#     try:
-#         yield db
-#     finally:
-#         db.close()
-
-
-# --- Pydantic Schemas for API responses ---
 class PaperReferenceSchema(BaseModel):
     id: str
     title: str
@@ -347,7 +353,9 @@ class ResearchProjectSchema(BaseModel):
     keywords: list[str]
     subtopics: list[str]
     status: str
-    total_papers_found: int  # <-- ADDED
+    total_papers_found: int
+    report: dict | None = None
+    report_status: str | None = "empty"
     created_at: datetime
     agent_plans: list[AgentPlanSchema] = []
     paper_references: list[PaperReferenceSchema] = []
@@ -430,7 +438,15 @@ projects_router = APIRouter()
 def get_projects(
     db: Session = Depends(get_db), current_user: User = Depends(auth.get_current_user)
 ):
-    projects = db.query(ResearchProject).filter(ResearchProject.user_id == current_user.id).all()
+    projects = (
+        db.query(ResearchProject)
+        .options(
+            selectinload(ResearchProject.agent_plans),
+            selectinload(ResearchProject.paper_references),
+        )
+        .filter(ResearchProject.user_id == current_user.id)
+        .all()
+    )
     return projects
 
 
@@ -442,6 +458,10 @@ def get_project(
 ):
     project = (
         db.query(ResearchProject)
+        .options(
+            selectinload(ResearchProject.agent_plans),
+            selectinload(ResearchProject.paper_references),
+        )
         .filter(ResearchProject.id == project_id, ResearchProject.user_id == current_user.id)
         .first()
     )
@@ -505,6 +525,16 @@ class DeleteProjectResponse(BaseModel):
     message: str
 
 
+class ReportResponse(BaseModel):
+    project_id: str
+    report: dict | None = None
+    report_status: str
+    message: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
 @projects_router.delete("/projects/{project_id}", response_model=DeleteProjectResponse)
 def delete_project(
     project_id: str,
@@ -525,7 +555,6 @@ def delete_project(
 
     project_title = project.title
 
-    # Delete associated RAG data if the service is available
     if RAGService is not None:
         try:
             rag_service = RAGService()
@@ -533,18 +562,10 @@ def delete_project(
             logging.info(f"Deleted RAG data for project {project_id}")
         except Exception as e:
             logging.warning(f"Failed to delete RAG data for project {project_id}: {e}")
-            # Continue with deletion even if RAG cleanup fails
 
-    # Delete associated LLM interactions (has FK to project)
     db.query(LLMInteraction).filter(LLMInteraction.project_id == project_id).delete()
-
-    # Delete associated agent plans
     db.query(AgentPlan).filter(AgentPlan.project_id == project_id).delete()
-
-    # Delete associated paper references
     db.query(PaperReference).filter(PaperReference.project_id == project_id).delete()
-
-    # Delete the project itself
     db.delete(project)
     db.commit()
 
@@ -554,6 +575,32 @@ def delete_project(
         id=project_id,
         deleted=True,
         message=f"Project '{project_title}' and all associated data deleted successfully",
+    )
+
+
+@projects_router.get("/projects/{project_id}/report", response_model=ReportResponse)
+def get_project_report(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """Get the structured research report for a project."""
+    project = (
+        db.query(ResearchProject)
+        .filter(ResearchProject.id == project_id, ResearchProject.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    report_data = project.report
+    report_status = project.report_status or "empty"
+
+    return ReportResponse(
+        project_id=project_id,
+        report=report_data,
+        report_status=report_status,
+        message="Report retrieved successfully" if report_data else "Report is not yet available",
     )
 
 
@@ -645,7 +692,6 @@ def semantic_search(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Use RAG service if available
     if RAGService is not None:
         rag_service = RAGService()
         results = rag_service.search(
@@ -656,14 +702,12 @@ def semantic_search(
         )
         return results
     else:
-        # RAG service not available, return empty results
         return []
 
 
 app.include_router(search_router, prefix="/api", tags=["Search"])
 
 
-# --- WebSocket Router ---
 from fastapi import WebSocket, WebSocketDisconnect
 
 from realtime.manager import get_connection_manager
@@ -690,25 +734,20 @@ async def websocket_project_stream(
     connection_established = False
 
     try:
-        # Connect and subscribe to project
         success = await manager.connect(websocket, user_id, project_id)
         if not success:
             logger.warning(f"Failed to establish WebSocket connection for project {project_id}")
             try:
                 await websocket.close(code=1008, reason="Connection failed")
             except:
-                pass  # Connection may already be closed
+                pass
             return
 
         connection_established = True
-
-        # Keep connection alive and handle incoming messages
         while True:
             try:
-                # Receive messages (ping/pong for keepalive)
                 data = await websocket.receive_text()
 
-                # Handle ping
                 if data == "ping":
                     await websocket.send_json({"type": "pong"})
 
@@ -716,7 +755,6 @@ async def websocket_project_stream(
                 logger.info(f"WebSocket client disconnected for project {project_id}")
                 break
             except RuntimeError as e:
-                # Handle "WebSocket is not connected" errors gracefully
                 logger.warning(f"WebSocket runtime error for project {project_id}: {e}")
                 break
             except Exception as e:
@@ -727,7 +765,6 @@ async def websocket_project_stream(
         logger.error(f"WebSocket setup error for project {project_id}: {e}", exc_info=True)
 
     finally:
-        # Clean up connection only if it was established
         if connection_established:
             try:
                 await manager.disconnect(websocket)
@@ -754,23 +791,18 @@ def send_completion_email(
     Sends the final synthesized report to the user via the Brevo (Sendinblue) Transactional Email API
     using the official Python SDK (sib_api_v3_sdk).
     """
-    # Load API key from environment
     api_key = os.environ.get("BREVO_API_KEY", "")
     if not api_key or api_key == "your_actual_api_key_here":
         logging.warning("BREVO_API_KEY not set or placeholder used. Skipping email notification.")
         return
 
-    # Step 1: Configure client properly
     configuration = Configuration()
     configuration.api_key["api-key"] = api_key
     api_client = ApiClient(configuration)
     email_api = TransactionalEmailsApi(api_client)
-
-    # Step 2: Prepare sender info
     sender_email = os.environ.get("BREVO_SENDER_EMAIL", "sunilbishnoi7205@gmail.com")
     sender_name = os.environ.get("BREVO_SENDER_NAME", "Scholar AI Agent")
 
-    # Step 3: Format HTML content
     formatted_output = markdown.markdown(synthesis_output)
     html_content = f"""
     <html>
@@ -792,7 +824,6 @@ def send_completion_email(
 
     subject = f"Research Complete: {project_title}"
 
-    # Step 4: Send email
     try:
         send_smtp_email = SendSmtpEmail(
             to=[{"email": user_email, "name": user_name}],
@@ -813,12 +844,10 @@ def send_completion_email(
 @celery_app.task(name="run_literature_review", bind=True)
 def run_literature_review(self, project_id: str, max_papers: int):
     """Execute the full literature review pipeline as a Celery background task."""
-    from agents.analyzer import PaperAnalyzerAgent
     from agents.llm import get_llm_client
-    from agents.synthesizer import SynthesisExecutorAgent
+    from agents.orchestrator import ResearchOrchestrator
     from realtime.events import AgentProgressTracker
 
-    # Create a fresh DB engine/session for this Celery worker process
     task_engine = create_engine(
         os.environ.get("DATABASE_URL", "sqlite:///./test.db"),
         connect_args=(
@@ -830,12 +859,12 @@ def run_literature_review(self, project_id: str, max_papers: int):
     TaskSession = scoped_session(sessionmaker(bind=task_engine))
     db = TaskSession()
     llm_client = get_llm_client()
-    analyzer = PaperAnalyzerAgent(llm_client)
-    synthesizer = SynthesisExecutorAgent(llm_client)
-    retriever = PaperRetriever()
 
-    # Initialize progress tracker for real-time WebSocket updates
     tracker = AgentProgressTracker(project_id)
+
+    orchestrator = ResearchOrchestrator(
+        llm_client=llm_client, progress_callback=tracker.progress_callback_adapter
+    )
 
     try:
         project = (
@@ -847,63 +876,63 @@ def run_literature_review(self, project_id: str, max_papers: int):
         if not project:
             return {"status": "error", "error": "Project not found"}
 
-        # Start retriever agent
-        tracker.start_agent("retriever", "Searching for relevant papers...")
-
-        # 1. Retrieve papers
-        papers_to_analyze = retriever.search_papers(
-            search_terms=project.keywords, max_papers=max_papers
+        # Run the orchestrator pipeline
+        final_state = orchestrator.run_sync(
+            project_id=project_id,
+            user_id=project.user_id,
+            title=project.title,
+            research_question=project.research_question,
+            max_papers=max_papers,
         )
 
-        # Save the number of found papers
-        project.total_papers_found = len(papers_to_analyze)
-        db.commit()
+        # Update project with results from final_state
+        project.status = final_state.get("status", "completed")
+        project.total_papers_found = final_state.get("total_papers_found", 0)
 
-        # Notify papers found
-        tracker.log(f"Found {len(papers_to_analyze)} papers")
-        tracker.update_progress(100)  # Retriever is done
-        tracker.complete_agent("retriever", f"Found {len(papers_to_analyze)} papers")
+        # --- CRITICAL FIX: Save analyzed papers to paper_references table ---
+        analyzed_papers = final_state.get("analyzed_papers", [])
+        if analyzed_papers:
+            for paper in analyzed_papers:
+                # Handle both PaperAnalysis model and dict cases
+                if hasattr(paper, "model_dump"):
+                    paper_data = paper.model_dump()
+                elif hasattr(paper, "__dict__"):
+                    paper_data = paper.__dict__ if isinstance(paper, object) else paper
+                else:
+                    paper_data = paper
 
-        if not papers_to_analyze:
-            project.status = "error_no_papers_found"
-            db.commit()
-            tracker.error("No papers found for the given search criteria")
-            logging.warning(f"Could not retrieve any papers for project {project_id}.")
-            return {
-                "status": "completed_with_warning",
-                "message": "No papers found for the given search criteria.",
-            }
+                # Create PaperReference record
+                paper_ref = PaperReference(
+                    project_id=project_id,
+                    title=paper_data.get("title", "Untitled"),
+                    authors=paper_data.get("authors", []),
+                    abstract=paper_data.get("abstract"),
+                    url=paper_data.get("url"),
+                    relevance_score=float(paper_data.get("relevance_score", 0)),
+                )
+                db.add(paper_ref)
 
-        # 2. Analyze each retrieved paper
-        project.status = "analyzing"
-        db.commit()
-
-        tracker.start_agent("analyzer", "Analyzing papers...")
-
-        paper_analyses = []
-
-        for i, paper_data in enumerate(papers_to_analyze):
-            content = paper_data.get("abstract", "")
-            if not content:
-                continue
-
-            analyzer_response_str = analyzer.analyze_paper(
-                paper_data["title"], paper_data["abstract"], content, project.research_question
+            logging.info(
+                f"Saved {len(analyzed_papers)} papers to database for project {project_id}"
             )
 
-            relevance_score = 0.0
-            analysis_json = {}
-            try:
-                from agents.tools import extract_json_from_response
+        # --- CRITICAL FIX: Create analyzer agent plan with analysis results ---
+        if final_state.get("analyzer_output"):
+            analyzer_output = final_state["analyzer_output"]
+            # Convert analyzer output to plan format
+            analyses_summary = []
+            if hasattr(analyzer_output, "paper_analyses"):
+                analyses = analyzer_output.paper_analyses
+            else:
+                analyses = analyzer_output.get("paper_analyses", [])
 
-                analysis_json = extract_json_from_response(analyzer_response_str, {})
-                relevance_score = float(analysis_json.get("relevance_score", 0.0))
-            except (json.JSONDecodeError, TypeError) as e:
-                logging.error(
-                    f"Failed to parse JSON from analyzer for paper '{paper_data['title']}': {e}"
-                )
-                paper_analyses.append(analyzer_response_str)
-                relevance_score = 0.0
+            for analysis in analyses:
+                if hasattr(analysis, "model_dump"):
+                    analyses_summary.append(analysis.model_dump())
+                else:
+                    analyses_summary.append(
+                        analysis if isinstance(analysis, dict) else vars(analysis)
+                    )
 
             analyzer_plan = AgentPlan(
                 id=str(uuid.uuid4()),
@@ -911,105 +940,113 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 agent_type="analyzer",
                 plan_steps=[
                     {
-                        "step": "analyze_paper",
-                        "status": "completed",
-                        "output": {"response": analysis_json or analyzer_response_str},
+                        "step": "analyze_papers",
+                        "status": "success",
+                        "output": {
+                            "papers_analyzed": len(analyses_summary),
+                            "analyses": analyses_summary,
+                        },
                     }
                 ],
                 current_step=1,
-                plan_metadata={"paper_title": paper_data["title"]},
+                plan_metadata={
+                    "model_used": "batched_llm",
+                    "batches_processed": len(analyses_summary) // 5 + 1,
+                },
             )
             db.add(analyzer_plan)
+            logging.info(f"Created analyzer agent plan for project {project_id}")
 
-            paper = PaperReference(
-                id=str(uuid.uuid4()),
-                project_id=project_id,
-                title=paper_data["title"],
-                authors=paper_data.get("authors", []),
-                abstract=paper_data.get("abstract"),
-                url=paper_data.get("url"),
-                relevance_score=relevance_score,
-            )
-            db.add(paper)
-            db.commit()
-            paper_analyses.append(analyzer_response_str)
+        # Save structured report if available
+        if final_state.get("report"):
+            # Ensure it's a dict for JSON column
+            report_data = final_state["report"]
+            if hasattr(report_data, "model_dump"):
+                # Pydantic v2
+                report_data = report_data.model_dump()
+            elif hasattr(report_data, "dict"):
+                # Pydantic v1
+                report_data = report_data.dict()
+            # Handle datetime serialization
+            report_data = json.loads(json.dumps(report_data, default=str))
+            project.report = report_data
+            project.report_status = "complete" if project.status == "completed" else "partial"
 
-            # Update progress and notify paper analyzed
-            analyzed_count = i + 1
-            total_papers = len(papers_to_analyze)
-            progress_pct = (analyzed_count / total_papers) * 100
-            tracker.update_progress(
-                progress_pct, f"Analyzed {analyzed_count}/{total_papers} papers"
-            )
-            tracker.paper_analyzed(
-                paper_data["title"],
-                relevance_score,
-                current=analyzed_count,
-                total=total_papers,
-            )
+        # --- CRITICAL FIX: Create synthesizer agent plan with synthesis output as markdown ---
+        # Extract synthesis output for frontend (must be in plan_steps[0].output.response format)
+        if final_state.get("synthesis"):
+            synthesis_output = final_state["synthesis"]
+        elif final_state.get("report"):
+            # Extract basic text from report for legacy email/fields
+            report = final_state["report"]
+            # Handle both dict and Pydantic model cases
+            if hasattr(report, "metadata"):
+                # Pydantic model
+                title = (
+                    report.metadata.title
+                    if hasattr(report.metadata, "title")
+                    else "Literature Review"
+                )
+                summary = report.executive_summary if hasattr(report, "executive_summary") else ""
+            else:
+                # Dict case
+                title = report.get("metadata", {}).get("title") or report.get(
+                    "title", project.title
+                )
+                summary = report.get("executive_summary", "")
+            synthesis_output = f"# {title}\n\n{summary}"
+        else:
+            synthesis_output = ""
 
-            time.sleep(1.5)
-
-        tracker.complete_agent("analyzer", f"Analyzed {len(paper_analyses)} papers")
-
-        # 3. Synthesizer logic
-        project.status = "synthesizing"
-        db.commit()
-
-        tracker.start_agent("synthesizer", "Synthesizing final report...")
-
-        subtopic = project.subtopics[0] if project.subtopics else "Comprehensive Literature Review"
-
-        # Try synthesis with graceful degradation
-        try:
-            synthesizer_response = synthesizer.synthesize_section(
-                subtopic=subtopic,
-                paper_analyses="\n\n---\n\n".join(paper_analyses),
-                academic_level="graduate",
-                word_count=500,
-            )
-        except Exception as synth_error:
-            # If synthesis fails, create a basic summary from what we have
-            logging.error(f"Synthesis failed: {synth_error}. Creating basic summary.")
-            synthesizer_response = _create_fallback_synthesis(subtopic, paper_analyses)
-
+        # Create synthesizer agent plan with the synthesis output as markdown string
         synthesizer_plan = AgentPlan(
             id=str(uuid.uuid4()),
             project_id=project_id,
             agent_type="synthesizer",
             plan_steps=[
                 {
-                    "step": "synthesize_section",
-                    "status": "completed",
-                    "output": {"response": synthesizer_response},
+                    "step": "synthesize_report",
+                    "status": "success",
+                    "output": {
+                        "response": synthesis_output,
+                        "report_status": project.report_status if project.report else "empty",
+                    },
                 }
             ],
             current_step=1,
-            plan_metadata={},
+            plan_metadata={
+                "sections_generated": (
+                    len(final_state["report"].sections)
+                    if final_state.get("report") and hasattr(final_state["report"], "sections")
+                    else 0
+                ),
+                "word_count": len(synthesis_output.split()),
+            },
         )
         db.add(synthesizer_plan)
+        logging.info(f"Created synthesizer agent plan for project {project_id}")
 
-        project.status = "completed"
         db.commit()
 
-        tracker.complete_agent("synthesizer", "Synthesis complete")
-        tracker.complete(papers_analyzed=len(paper_analyses))
+        # Notify completion
+        tracker.complete(
+            papers_analyzed=len(final_state.get("analyzed_papers", [])),
+            synthesis_words=len(synthesis_output.split()),
+        )
 
-        # ---send email after completion---
-
-        if project.user:
+        # --- send completion email ---
+        if project.user and synthesis_output:
             send_completion_email(
                 user_email=project.user.email,
                 user_name=project.user.name,
                 project_title=project.title,
-                synthesis_output=synthesizer_response,
-            )
-        else:
-            logging.warning(
-                f"Project {project_id} has no associated user. Cannot send completion email."
+                synthesis_output=synthesis_output,
             )
 
-        return {"status": "completed", "papers_analyzed": len(paper_analyses)}
+        return {
+            "status": project.status,
+            "papers_analyzed": len(final_state.get("analyzed_papers", [])),
+        }
     except Exception as e:
         logging.error(
             f"An error occurred during literature review for project {project_id}: {e}",
@@ -1024,20 +1061,24 @@ def run_literature_review(self, project_id: str, max_papers: int):
             project_to_update = (
                 db.query(ResearchProject).filter(ResearchProject.id == project_id).first()
             )
-            if project_to_update and paper_analyses:
+            analyzed_from_state = final_state.get("analyzed_papers", [])
+            if project_to_update and analyzed_from_state:
                 # We have some analyses - try to complete with what we have
                 logging.info(
                     f"Attempting to complete project {project_id} with partial results "
-                    f"({len(paper_analyses)} papers)"
+                    f"({len(analyzed_from_state)} papers)"
                 )
                 project_to_update.status = "completed_partial"
+                fallback_papers = [
+                    p.get("title", f"Paper {i}") for i, p in enumerate(analyzed_from_state)
+                ]
                 fallback_response = _create_fallback_synthesis(
                     (
                         project_to_update.subtopics[0]
                         if project_to_update.subtopics
                         else "Literature Review"
                     ),
-                    paper_analyses,
+                    fallback_papers,
                 )
                 synthesizer_plan = AgentPlan(
                     id=str(uuid.uuid4()),
@@ -1057,7 +1098,7 @@ def run_literature_review(self, project_id: str, max_papers: int):
                 db.commit()
                 return {
                     "status": "completed_partial",
-                    "papers_analyzed": len(paper_analyses),
+                    "papers_analyzed": len(analyzed_from_state),
                     "error": str(e),
                 }
             elif project_to_update:

@@ -463,14 +463,31 @@ def synthesize_section(
     Analyzed Papers:
     {analyses_text}
     
-    OUTPUT FORMAT:
-    1. Introduction: Overview of topic and scope
-    2. Thematic Organization: Group findings by themes/approaches
-    3. Critical Analysis: Compare/contrast findings, identify patterns
-    4. Research Gaps: Highlight limitations and future directions
-    5. Conclusion: Synthesize key takeaways
+    OUTPUT FORMAT INSTRUCTIONS:
+    - Output the content as standard Markdown text.
+    - Use ## for main section headers.
+    - Do NOT output JSON, XML, or any other structured data format.
+    - Do NOT include any preamble or "Here is the section" text.
     
-    Write the section now. Do NOT include a References section.
+    STRUCTURE:
+    ## {subtopic}
+    
+    ### Introduction
+    Overview of topic and scope...
+    
+    ### Thematic Organization
+    Group findings by themes/approaches...
+    
+    ### Critical Analysis
+    Compare/contrast findings, identify patterns...
+    
+    ### Research Gaps
+    Highlight limitations and future directions...
+    
+    ### Conclusion
+    Synthesize key takeaways...
+    
+    Write the section now in Markdown. Do NOT include a References section.
     """
 
     try:
