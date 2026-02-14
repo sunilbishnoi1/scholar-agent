@@ -1,7 +1,9 @@
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any
+
 from pydantic import BaseModel, BeforeValidator, Field
+
 
 class ReportStatus(StrEnum):
     COMPLETE = "complete"  # Full pipeline completed

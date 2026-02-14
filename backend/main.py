@@ -18,7 +18,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sib_api_v3_sdk.rest import ApiException
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker, selectinload
+from sqlalchemy.orm import Session, joinedload, scoped_session, selectinload, sessionmaker
 
 load_dotenv()
 
@@ -130,7 +130,10 @@ def _run_schema_migrations():
     logging.info(
         f"Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})"
     )
-    print(f"DEBUG: Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})", flush=True)
+    print(
+        f"DEBUG: Running schema migrations... (Database: {'PostgreSQL' if _is_postgresql() else 'SQLite'})",
+        flush=True,
+    )
 
     try:
         with engine.begin() as conn:
@@ -154,7 +157,7 @@ def _run_schema_migrations():
 
             if not table_exists:
                 logging.info("Users table does not exist yet, skipping migrations.")
-                
+
             if table_exists:
                 existing_columns = _get_existing_columns(conn, "users")
                 logging.info(f"Existing columns in 'users' table: {existing_columns}")
@@ -171,7 +174,10 @@ def _run_schema_migrations():
                     if not _is_postgresql():
                         migrations = [
                             ("tier", "VARCHAR(50) DEFAULT 'free'"),
-                            ("monthly_budget_usd", "REAL DEFAULT 1.0"),  # SQLite uses REAL for floats
+                            (
+                                "monthly_budget_usd",
+                                "REAL DEFAULT 1.0",
+                            ),  # SQLite uses REAL for floats
                         ]
 
                     success_count = 0
@@ -180,7 +186,7 @@ def _run_schema_migrations():
                             conn, "users", column_name, column_def, existing_columns
                         ):
                             success_count += 1
-            
+
             proj_columns = _get_existing_columns(conn, "research_projects")
             logging.info(f"Existing columns in 'research_projects': {proj_columns}")
             print(f"DEBUG: Existing columns in 'research_projects': {proj_columns}", flush=True)
@@ -196,9 +202,7 @@ def _run_schema_migrations():
                         conn, "research_projects", col_name, col_def, proj_columns
                     )
 
-            logging.info(
-                f"Schema migrations completed."
-            )
+            logging.info("Schema migrations completed.")
 
     except Exception as e:
         logging.error(f"Schema migration failed: {e}", exc_info=True)
@@ -281,19 +285,19 @@ logging.info(f"CORS origins configured: {origins}")
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled exception: {exc}", exc_info=True)
-    
+
     origin = request.headers.get("origin")
     headers = {"Access-Control-Allow-Credentials": "true"}
-    
+
     if origin and (origin in origins or "*" in origins):
         headers["Access-Control-Allow-Origin"] = origin
     elif origins:
         headers["Access-Control-Allow-Origin"] = origins[0]
-        
+
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "error_message": str(exc)},
-        headers=headers
+        headers=headers,
     )
 
 
