@@ -78,11 +78,12 @@ def _is_postgresql() -> bool:
 def _get_existing_columns(conn, table_name: str) -> set:
     """Get existing columns for a table, handling both PostgreSQL and SQLite."""
     if _is_postgresql():
+        # Use current_schema() to match the connection's active schema
         result = conn.execute(
             text("""
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_schema = 'public' 
+            WHERE table_schema = current_schema()
             AND table_name = :table_name
         """),
             {"table_name": table_name},

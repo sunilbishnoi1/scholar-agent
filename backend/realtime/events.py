@@ -272,12 +272,13 @@ class AgentProgressTracker:
         tracker.complete_agent("retriever")
     """
 
-    AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer"]
+    AGENT_ORDER = ["planner", "retriever", "analyzer", "synthesizer", "quality_checker"]
     AGENT_WEIGHTS = {
-        "planner": 10,  # 10% of total progress
-        "retriever": 20,  # 20% of total progress
-        "analyzer": 50,  # 50% of total progress
-        "synthesizer": 20,  # 20% of total progress
+        "planner": 5,  # 5%
+        "retriever": 15,  # 15%
+        "analyzer": 40,  # 40%
+        "synthesizer": 20,  # 20%
+        "quality_checker": 20,  # 20%
     }
 
     def __init__(self, project_id: str):
@@ -291,7 +292,7 @@ class AgentProgressTracker:
         total = 0.0
 
         for agent in self.AGENT_ORDER:
-            weight = self.AGENT_WEIGHTS.get(agent, 25)
+            weight = self.AGENT_WEIGHTS.get(agent, 20)
 
             if agent in self.completed_agents:
                 total += weight
@@ -348,6 +349,33 @@ class AgentProgressTracker:
             total=100,
         )
         sync_broadcast_agent_update(self.project_id, event)
+
+    def progress_callback_adapter(self, agent_name: str, message: str, percent: float):
+        """
+        Adapter to match the callback signature expected by ResearchOrchestrator.
+
+        Orchestrator calls: callback(agent_name, message, percent)
+        """
+        # Normalize agent name to match our keys (e.g. "synthesizer_agent" -> "synthesizer")
+        normalized_agent = agent_name.lower().replace("_agent", "")
+
+        # Handle agent transitions
+        if self.current_agent != normalized_agent:
+            # If we were tracking another agent, complete it (implicitly)
+            if self.current_agent and self.current_agent not in self.completed_agents:
+                self.complete_agent(self.current_agent)
+
+            # Start the new agent
+            if normalized_agent != self.current_agent:
+                self.start_agent(normalized_agent, message)
+
+        # Update progress
+        # Note: Orchestrator might send 100% which triggers completion in their logic,
+        # but we handle completion explicitly or via 100% here.
+        if percent >= 100:
+            self.complete_agent(normalized_agent, message)
+        else:
+            self.update_progress(percent, message)
 
     def log(self, message: str, level: str = "info"):
         """Log a message for the current agent."""
