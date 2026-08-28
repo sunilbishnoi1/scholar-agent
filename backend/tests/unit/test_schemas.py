@@ -7,8 +7,7 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError
-
-import agents.schemas as schemas
+from agents import schemas
 from agents.schemas import (
     AnalyzerInput,
     AnalyzerOutput,

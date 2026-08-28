@@ -47,7 +47,7 @@ def check_brevo():
         account_api = sib_api_v3_sdk.AccountApi(api_client)
         account_info = account_api.get_account()
         
-        print(f"  [OK] Brevo API Key is ACTIVE and VALID!")
+        print("  [OK] Brevo API Key is ACTIVE and VALID!")
         print(f"       Account Email: {account_info.email}")
         print(f"       Company Name: {getattr(account_info, 'company_name', 'N/A')}")
         if hasattr(account_info, "plan"):

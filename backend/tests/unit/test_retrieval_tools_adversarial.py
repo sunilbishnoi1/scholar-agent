@@ -187,8 +187,8 @@ class TestPDFParserAdversarial:
         assert len(section_titles) <= 4
 
     def test_latex_equation_extraction_complex_math(self):
-        text = """
-        Here is an inline equation $x_{i,j}^{(t)} \in \mathbb{R}^d$ and another $\\alpha + \\beta = \\gamma$.
+        text = r"""
+        Here is an inline equation $x_{i,j}^{(t)} \in \mathbb{R}^d$ and another $\alpha + \beta = \gamma$.
         Here is display math:
         $$
         \\min_{\\theta} \\mathbb{E}_{x \sim \mathcal{D}} [\\mathcal{L}(f_\\theta(x), y)] + \\lambda \\|\\theta\\|_2^2

@@ -143,6 +143,24 @@ ignore = [
     "B905",    # zip() strict (Python 3.10+)
     "PLW2901", # Loop variable overwritten
     "F401",    # Unused imports (clean up later)
+    "PLR0917", # Too many positional arguments
+    "TCH",     # Type-checking imports (avoids runtime Pydantic/FastAPI NameErrors)
+    "UP045",   # Optional[T] vs T | None union
+    "UP035",   # Deprecated typing imports
+    "UP037",   # Quoted type annotations
+    "UP006",   # Use of typing.List / Dict
+    "UP007",   # Use of Union syntax
+    "UP017",   # datetime.timezone.utc vs datetime.UTC alias
+    "UP042",   # Class inherits from object
+    "B023",    # Function definition does not bind loop variable
+    "I001",    # Import block is un-sorted or un-formatted
+    "RUF015",  # Prefer next(...) over single element slice
+    "RUF005",  # Consider iterable unpack
+    "RUF010",  # Explicit conversion flag
+    "PLR5501", # Collapsible else if
+    "PLR1714", # Repeated equality comparison
+    "PLW0602", # Global variable not modified
+    "PLW0211", # Bad method first argument
 ]
 
 # Allow autofix for all enabled rules

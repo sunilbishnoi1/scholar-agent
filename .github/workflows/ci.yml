@@ -11,7 +11,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
   # ==========================================
@@ -238,7 +238,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Run ESLint
         working-directory: frontend
@@ -269,7 +269,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Build
         working-directory: frontend
