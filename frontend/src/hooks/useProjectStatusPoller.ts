@@ -15,7 +15,7 @@ export const useProjectStatusPoller = (projectId?: string) => {
 
     useEffect(() => {
         const project = projects.find((p) => p.id === projectId);
-        const isRunning = project && ['searching', 'analyzing', 'synthesizing', 'planning'].includes(project.status);
+        const isRunning = project && ['searching', 'analyzing', 'synthesizing', 'planning', 'in_progress'].includes(project.status);
 
         const stopPolling = () => {
             if (pollingInterval.current) {
@@ -39,7 +39,7 @@ export const useProjectStatusPoller = (projectId?: string) => {
                         // The ProgressTracker component already shows the current status.
                         // We only notify on terminal states (completed or error).
 
-                        if (!['searching', 'analyzing', 'synthesizing', 'planning'].includes(updatedProject.status)) {
+                        if (!['searching', 'analyzing', 'synthesizing', 'planning', 'in_progress'].includes(updatedProject.status)) {
                             if (updatedProject.status === 'completed') {
                                 // Add a toastId to prevent duplicate notifications
                                 toast.success(`Project "${updatedProject.title}" has completed. A report has been sent to your email address.`, {

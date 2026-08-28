@@ -1,32 +1,28 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProjectStore } from '../store/projectStore';
-import type { ResearchProject } from '../types';
+import { useAuthStore } from '../store/authStore';
+import type { ResearchProject, EventType, AgentWebSocketEvent } from '../types';
 
-// Event types from backend
-export type EventType =
-    | 'connected'
-    | 'disconnected'
-    | 'agent_started'
-    | 'agent_completed'
-    | 'agent_error'
-    | 'status'
-    | 'progress'
-    | 'log'
-    | 'paper_found'
-    | 'paper_analyzed'
-    | 'complete'
-    | 'error'
-    | 'pong';
+export type { EventType };
+export type AgentUpdate = AgentWebSocketEvent;
 
-export interface AgentUpdate {
-    type: EventType;
-    agent?: string;
-    project_id?: string;
-    message?: string;
-    progress?: number;
-    data?: Record<string, unknown>;
-    timestamp?: string;
+export interface CriticVerdictData {
+    score: number;
+    should_refine: boolean;
+    iteration: number;
+    dimension_scores?: Record<string, number>;
+    weaknesses?: string[];
+    guidance?: string;
+}
+
+export interface FactCheckedData {
+    precision_score: number;
+    passed: boolean;
+    entailed_count?: number;
+    neutral_count?: number;
+    contradiction_count?: number;
+    total_propositions?: number;
 }
 
 export interface UseProjectStreamOptions {
@@ -51,10 +47,14 @@ export interface UseProjectStreamReturn {
     progress: number;
     /** Latest log messages */
     logs: string[];
-    /** Number of papers analyzed (from real-time events) */
+    /** Number of papers analyzed/parsed (from real-time events) */
     papersAnalyzed: number;
     /** Total papers to analyze (from real-time events) */
     totalPapers: number;
+    /** Latest critic verdict details if evaluated */
+    latestCriticVerdict: CriticVerdictData | null;
+    /** Latest fact check audit details if completed */
+    latestFactCheck: FactCheckedData | null;
     /** Manually connect to WebSocket */
     connect: () => void;
     /** Manually disconnect from WebSocket */
@@ -64,17 +64,9 @@ export interface UseProjectStreamReturn {
 }
 
 /**
- * Hook for real-time project updates via WebSocket.
+ * Hook for real-time project updates via WebSocket (Scholar Agent v3.2).
  * 
- * Replaces polling with streaming updates for better UX.
- * 
- * @example
- * ```tsx
- * const { isConnected, currentAgent, progress, logs } = useProjectStream(projectId, {
- *   token: authToken,
- *   autoReconnect: true,
- * });
- * ```
+ * Supports both standard v3.2 multi-agent DAG events and legacy events.
  */
 export function useProjectStream(
     projectId: string | undefined,
@@ -94,6 +86,8 @@ export function useProjectStream(
     const [logs, setLogs] = useState<string[]>([]);
     const [papersAnalyzed, setPapersAnalyzed] = useState(0);
     const [totalPapers, setTotalPapers] = useState(0);
+    const [latestCriticVerdict, setLatestCriticVerdict] = useState<CriticVerdictData | null>(null);
+    const [latestFactCheck, setLatestFactCheck] = useState<FactCheckedData | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttemptsRef = useRef(0);
@@ -110,6 +104,8 @@ export function useProjectStream(
         setCurrentAgent(null);
         setPapersAnalyzed(0);
         setTotalPapers(0);
+        setLatestCriticVerdict(null);
+        setLatestFactCheck(null);
     }, []);
 
     const disconnect = useCallback(() => {
@@ -130,24 +126,25 @@ export function useProjectStream(
 
     const connect = useCallback(() => {
         if (!projectId) return;
-        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+        if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
 
         // Build WebSocket URL
         const baseUrl = import.meta.env.VITE_WS_URL || 
             (import.meta.env.VITE_API_BASE_URL?.replace('http', 'ws') || 'ws://localhost:8000');
         
+        const storeToken = useAuthStore.getState().token;
+        const effectiveToken = token || storeToken || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
         let wsUrl = `${baseUrl}/ws/projects/${projectId}/stream`;
-        if (token) {
-            wsUrl += `?token=${encodeURIComponent(token)}`;
+        if (effectiveToken) {
+            wsUrl += `?token=${encodeURIComponent(effectiveToken)}`;
         }
-
-        console.log('[WebSocket] Connecting to:', wsUrl);
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log('[WebSocket] Connected');
             setIsConnected(true);
             reconnectAttemptsRef.current = 0;
 
@@ -162,34 +159,164 @@ export function useProjectStream(
         ws.onmessage = (event) => {
             try {
                 const update: AgentUpdate = JSON.parse(event.data);
-                console.log('[WebSocket] Received:', update);
 
                 // Skip pong messages
                 if (update.type === 'pong') return;
 
                 setUpdates((prev) => [...prev.slice(-99), update]); // Keep last 100 updates
 
+                // Helper to update logs
+                if (update.message) {
+                    setLogs((prev) => [...prev.slice(-49), update.message!]);
+                }
+
+                // Helper to map agent names to project store status
+                const mapAgentToStatus = (agentName?: string) => {
+                    if (!agentName) return;
+                    const statusMap: Record<string, ResearchProject['status']> = {
+                        supervisor: 'planning',
+                        planner: 'planning',
+                        discovery: 'searching',
+                        retriever: 'searching',
+                        ingestion: 'analyzing',
+                        matrix_builder: 'analyzing',
+                        analyzer: 'analyzing',
+                        synthesizer: 'synthesizing',
+                        critic: 'synthesizing',
+                        auditor: 'synthesizing',
+                    };
+                    const newStatus = statusMap[agentName.toLowerCase()];
+                    if (newStatus && projectId) {
+                        updateProjectStatus(projectId, newStatus);
+                    }
+                };
+
                 switch (update.type) {
+                    // --- v3.2 Granular Multi-Agent Event Handlers ---
+                    case 'discovery_started':
+                        setCurrentAgent(update.agent || 'discovery');
+                        mapAgentToStatus('discovery');
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'paper_discovered':
+                        setCurrentAgent('discovery');
+                        mapAgentToStatus('discovery');
+                        setTotalPapers((prev) => prev + 1);
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'pdf_parsed':
+                        setCurrentAgent('ingestion');
+                        mapAgentToStatus('ingestion');
+                        setPapersAnalyzed((prev) => prev + 1);
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'matrix_row_added':
+                        setCurrentAgent('matrix_builder');
+                        mapAgentToStatus('matrix_builder');
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'thematic_draft_ready':
+                        setCurrentAgent('synthesizer');
+                        mapAgentToStatus('synthesizer');
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'critic_verdict':
+                        setCurrentAgent('critic');
+                        mapAgentToStatus('critic');
+                        if (update.data) {
+                            setLatestCriticVerdict({
+                                score: (update.data.score as number) ?? 0,
+                                should_refine: Boolean(update.data.should_refine),
+                                iteration: (update.data.iteration as number) ?? 0,
+                                dimension_scores: update.data.dimension_scores as Record<string, number>,
+                                weaknesses: update.data.weaknesses as string[],
+                                guidance: update.data.guidance as string,
+                            });
+                        }
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'fact_checked':
+                        setCurrentAgent('auditor');
+                        mapAgentToStatus('auditor');
+                        if (update.data) {
+                            setLatestFactCheck({
+                                precision_score: (update.data.precision_score as number) ?? 100,
+                                passed: Boolean(update.data.passed),
+                                entailed_count: update.data.entailed_count as number,
+                                neutral_count: update.data.neutral_count as number,
+                                contradiction_count: update.data.contradiction_count as number,
+                                total_propositions: update.data.total_propositions as number,
+                            });
+                        }
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
+                        }
+                        break;
+
+                    case 'pipeline_completed':
+                    case 'complete':
+                        setProgress(100);
+                        setCurrentAgent(null);
+                        if (projectId) {
+                            updateProjectStatus(projectId, 'completed');
+                        }
+                        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['project-report', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['project-matrix', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['project-gaps', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['projects'] });
+                        break;
+
+                    case 'pipeline_stopped':
+                        setCurrentAgent(null);
+                        if (projectId) {
+                            updateProjectStatus(projectId, 'stopped');
+                        }
+                        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['projects'] });
+                        break;
+
+                    case 'pipeline_error':
+                    case 'error':
+                        setCurrentAgent(null);
+                        if (projectId) {
+                            updateProjectStatus(projectId, 'error');
+                        }
+                        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['projects'] });
+                        break;
+
+                    // --- Legacy Event Handlers ---
                     case 'agent_started':
                     case 'status':
                         if (update.agent) {
                             setCurrentAgent(update.agent);
-                            // Map agent names to project statuses
-                            const statusMap: Record<string, ResearchProject['status']> = {
-                                planner: 'planning',
-                                retriever: 'searching',
-                                analyzer: 'analyzing',
-                                synthesizer: 'synthesizing',
-                            };
-                            const newStatus = statusMap[update.agent];
-                            if (newStatus && projectId) {
-                                updateProjectStatus(projectId, newStatus);
-                            }
+                            mapAgentToStatus(update.agent);
+                        }
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
                         }
                         break;
 
                     case 'agent_completed':
-                        // Keep current agent visible until next one starts
                         break;
 
                     case 'progress':
@@ -198,62 +325,33 @@ export function useProjectStream(
                         }
                         break;
 
-                    case 'log':
                     case 'paper_found':
-                        if (update.message) {
-                            setLogs((prev) => [...prev.slice(-49), update.message!]);
-                        }
-                        // Track total papers from retriever
-                        if (update.type === 'paper_found' && update.data?.total) {
+                        if (update.data?.total) {
                             setTotalPapers(update.data.total as number);
                         }
-                        // Also update progress if provided
                         if (typeof update.progress === 'number') {
                             setProgress(update.progress);
                         }
                         break;
 
                     case 'paper_analyzed':
-                        if (update.message) {
-                            setLogs((prev) => [...prev.slice(-49), update.message!]);
-                        }
-                        // Update papers analyzed count from data if available, otherwise increment
                         if (update.data?.current !== undefined) {
                             setPapersAnalyzed(update.data.current as number);
                         } else {
                             setPapersAnalyzed((prev) => prev + 1);
                         }
-                        // Update total papers from paper_analyzed event
                         if (update.data?.total !== undefined) {
                             setTotalPapers(update.data.total as number);
                         }
-                        // Also update progress if provided
                         if (typeof update.progress === 'number') {
                             setProgress(update.progress);
                         }
                         break;
 
-                    case 'complete':
-                        setProgress(100);
-                        setCurrentAgent(null);
-                        // Update project status to completed
-                        if (projectId) {
-                            updateProjectStatus(projectId, 'completed');
+                    case 'log':
+                        if (typeof update.progress === 'number') {
+                            setProgress(update.progress);
                         }
-                        // Invalidate project query to refresh data
-                        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-                        queryClient.invalidateQueries({ queryKey: ['projects'] });
-                        break;
-
-                    case 'error':
-                        setCurrentAgent(null);
-                        // Update project status to error
-                        if (projectId) {
-                            updateProjectStatus(projectId, 'error');
-                        }
-                        // Invalidate project query to show error state
-                        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-                        queryClient.invalidateQueries({ queryKey: ['projects'] });
                         break;
                 }
             } catch (e) {
@@ -261,8 +359,7 @@ export function useProjectStream(
             }
         };
 
-        ws.onclose = (event) => {
-            console.log('[WebSocket] Closed:', event.code, event.reason);
+        ws.onclose = () => {
             setIsConnected(false);
             wsRef.current = null;
 
@@ -274,7 +371,6 @@ export function useProjectStream(
             // Auto-reconnect logic
             if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
                 reconnectAttemptsRef.current++;
-                console.log(`[WebSocket] Reconnecting in ${reconnectDelay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
                 reconnectTimeoutRef.current = setTimeout(connect, reconnectDelay);
             }
         };
@@ -302,6 +398,8 @@ export function useProjectStream(
         logs,
         papersAnalyzed,
         totalPapers,
+        latestCriticVerdict,
+        latestFactCheck,
         connect,
         disconnect,
         clearUpdates,

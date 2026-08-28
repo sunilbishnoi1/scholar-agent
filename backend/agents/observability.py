@@ -158,8 +158,9 @@ class AgentTracer:
 
     # Cost per 1K tokens for different models (approximate)
     COST_PER_1K_TOKENS = {
-        "gemini-2.0-flash-lite": 0.00001,
+        "gemini-3.5-flash-lite": 0.00001,
         "gemini-2.5-flash-lite": 0.00001,
+        "gemini-2.0-flash-lite": 0.00001,
         "gemini-2.0-flash": 0.0001,
         "gemini-1.5-pro": 0.001,
         "default": 0.0001,

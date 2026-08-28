@@ -3,7 +3,6 @@ import {
     Modal, 
     Box, 
     Typography, 
-    CircularProgress, 
     Backdrop, 
     Fade,
     IconButton,
@@ -106,25 +105,33 @@ interface CreateProjectModalProps {
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }) => {
     const [title, setTitle] = useState('');
     const [researchQuestion, setResearchQuestion] = useState('');
-    const { addProject, isLoading: isCreating } = useProjectStore();
+    const [maxPapers, setMaxPapers] = useState<number | string>(30);
+    const { addProject } = useProjectStore();
     const { isBackendReady } = useBackendWarmup();
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!isBackendReady || isCreating) return;
+        if (!isBackendReady || !title.trim() || !researchQuestion.trim()) return;
 
-        try {
-            await addProject({
-                title,
-                research_question: researchQuestion, 
-            });
-            
-            setTitle('');
-            setResearchQuestion('');
-            onClose();
-        } catch (error) {
+        const parsedMax = typeof maxPapers === 'number' ? maxPapers : parseInt(String(maxPapers), 10);
+        const effectiveMax = !isNaN(parsedMax) && parsedMax > 0 ? parsedMax : 30;
+
+        const newProjectPayload = {
+            title: title.trim(),
+            research_question: researchQuestion.trim(),
+            max_papers: effectiveMax,
+        };
+
+        // Instantly reset form and close modal
+        setTitle('');
+        setResearchQuestion('');
+        setMaxPapers(30);
+        onClose();
+
+        // Trigger optimistic addition and background creation
+        addProject(newProjectPayload).catch((error) => {
             console.error("Failed to create project", error);
-        }
+        });
     };
 
     return (
@@ -173,7 +180,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }
                             value={title}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
                             required
-                            disabled={isCreating}
                         />
 
                         <NoirInput
@@ -185,21 +191,35 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ open, onClose }
                             value={researchQuestion}
                             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setResearchQuestion(e.target.value)}
                             required
-                            disabled={isCreating}
+                        />
+
+                        <NoirInput
+                            fullWidth
+                            label="Max Papers to Analyze (Optional)"
+                            placeholder="30"
+                            type="number"
+                            slotProps={{
+                                htmlInput: { min: 5, max: 100, step: 5 }
+                            }}
+                            value={maxPapers}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                const val = e.target.value;
+                                setMaxPapers(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
+                            }}
+                            helperText="Number of candidate papers to discover & analyze (default: 30, range: 5–100)"
+                            FormHelperTextProps={{ sx: { color: '#71717A', fontSize: '0.75rem' } }}
                         />
 
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-                            <ActionButton type="button" secondary onClick={onClose} disabled={isCreating}>
+                            <ActionButton type="button" secondary onClick={onClose}>
                                 Cancel
                             </ActionButton>
                             
                             <ActionButton 
                                 type="submit" 
-                                disabled={isCreating || !isBackendReady || !title || !researchQuestion}
+                                disabled={!isBackendReady || !title.trim() || !researchQuestion.trim()}
                             >
-                                {isCreating ? (
-                                    <CircularProgress size={20} sx={{ color: '#09090B' }} />
-                                ) : !isBackendReady ? (
+                                {!isBackendReady ? (
                                     'Waking up backend...'
                                 ) : (
                                     'Initiate Research'

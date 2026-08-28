@@ -130,9 +130,45 @@ class CircuitBreaker:
             result = func(*args, **kwargs)
             self._on_success()
             return result
-        except Exception:
+        except Exception as e:
+            # Rate limits (429) are transient provider throttling, NOT a broken service or crash.
+            # Do NOT trip the circuit breaker on 429 rate limits so the system can back off gracefully.
+            if self._is_rate_limit_error(e):
+                logger.info(f"CircuitBreaker '{self.name}': Bypassing failure increment for rate limit: {e}")
+                raise
             self._on_failure()
             raise
+
+    async def call_async(self, func: Callable[..., Any], *args, **kwargs) -> Any:
+        """Async execution with circuit breaker protection."""
+        if self.state == self.State.OPEN:
+            if time.time() - self.last_failure_time >= self.recovery_timeout:
+                logger.info(f"CircuitBreaker '{self.name}': Attempting recovery (HALF_OPEN)")
+                self.state = self.State.HALF_OPEN
+            else:
+                raise CircuitBreakerOpen(
+                    f"Circuit breaker '{self.name}' is OPEN. "
+                    f"Will retry in {self.recovery_timeout - (time.time() - self.last_failure_time):.1f}s"
+                )
+
+        try:
+            result = await func(*args, **kwargs)
+            self._on_success()
+            return result
+        except Exception as e:
+            if self._is_rate_limit_error(e):
+                logger.info(f"CircuitBreaker '{self.name}': Bypassing failure increment for rate limit: {e}")
+                raise
+            self._on_failure()
+            raise
+
+    @staticmethod
+    def _is_rate_limit_error(exc: Exception) -> bool:
+        """Check if an exception represents a rate limit / 429 error."""
+        if getattr(exc, "category", None) == ErrorCategory.RATE_LIMIT:
+            return True
+        exc_str = str(exc).lower()
+        return "429" in exc_str or "rate limit" in exc_str or "resource_exhausted" in exc_str or "quota" in exc_str
 
     def _on_success(self):
         """Record successful call."""

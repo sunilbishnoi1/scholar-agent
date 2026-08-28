@@ -1,201 +1,194 @@
-# LLM Client Factory
-# Central factory for creating LLM clients based on configuration
-# This is the main entry point for getting an LLM client
+"""
+LLM Client Factory with Mock Support and Provider Resolution.
+"""
+
+from __future__ import annotations
 
 import logging
 import os
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
-from agents.llm.base import BaseLLMClient, LLMConfig
+from pydantic import BaseModel
+
+from agents.llm.base import BaseLLMClient, LLMConfig, LLMResponse, ModelTier
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T", bound=BaseModel)
 
 
 class LLMProvider(StrEnum):
-    """Supported LLM providers."""
-
-    GROQ = "groq"
     GEMINI = "gemini"
-    OPENAI = "openai"  # For future use
+    DEEPSEEK = "deepseek"
+    GROQ = "groq"
+    OPENAI = "openai"
+    MOCK = "mock"
 
     @classmethod
-    def from_string(cls, value: str) -> "LLMProvider":
-        """Convert string to provider enum."""
+    def from_string(cls, value: str | None) -> LLMProvider:
+        if not value:
+            return cls.GEMINI
         try:
-            return cls(value.lower())
+            return cls(value.lower().strip())
         except ValueError:
-            logger.warning(f"Unknown provider '{value}', defaulting to GROQ")
-            return cls.GROQ
+            logger.warning(f"Unknown provider '{value}', defaulting to GEMINI")
+            return cls.GEMINI
 
 
-# Global default provider - can be changed at runtime
-_default_provider: LLMProvider = LLMProvider.GROQ
-
-# Cache for client instances (singleton pattern per provider)
 _client_cache: dict[str, BaseLLMClient] = {}
+_default_provider: LLMProvider | None = None
+
+
+class MockLLMClient(BaseLLMClient):
+    """
+    Deterministic Mock LLM Client for offline unit and integration tests.
+    """
+
+    PROVIDER_NAME = "mock"
+
+    def _setup_client(self) -> None:
+        self.mock_text_responses: list[str] = []
+        self.mock_structured_responses: dict[type, Any] = {}
+        self.call_history: list[dict[str, Any]] = []
+
+    def get_provider_name(self) -> str:
+        return self.PROVIDER_NAME
+
+    def is_available(self) -> bool:
+        return True
+
+    def generate_text(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
+    ) -> str:
+        self.call_history.append({
+            "type": "text",
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "tier": model_tier,
+            "kwargs": kwargs,
+        })
+        if self.mock_text_responses:
+            return self.mock_text_responses.pop(0)
+        return "# Synthetic Scientific Response\n\nMock LLM synthesis response text for testing."
+
+    def generate_structured(
+        self,
+        prompt: str,
+        schema: type[T],
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
+    ) -> T:
+        self.call_history.append({
+            "type": "structured",
+            "schema": schema.__name__,
+            "prompt": prompt,
+            "tier": model_tier,
+            "kwargs": kwargs,
+        })
+        if schema in self.mock_structured_responses:
+            return self.mock_structured_responses[schema]
+        return schema.model_construct()
+
+    def get_usage_stats(self) -> dict[str, Any]:
+        return {"provider": "mock", "spent": 0.0, "calls": len(self.call_history)}
+
+    def reset_budget(self, new_budget: float | None = None) -> None:
+        pass
+
+
+class GeminiClient(BaseLLMClient):
+    """
+    Backward-compatible client adapter.
+    Delegates to the active default provider or GeminiProvider.
+    """
+
+    def _setup_client(self) -> None:
+        self._delegate = get_llm_client(provider=LLMProvider.GEMINI, config=self.config)
+
+    def get_provider_name(self) -> str:
+        return "gemini"
+
+    def generate_text(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
+    ) -> str:
+        return self._delegate.generate_text(
+            prompt, system_prompt=system_prompt, model_tier=model_tier, **kwargs
+        )
+
+    def generate_structured(
+        self,
+        prompt: str,
+        schema: type[T],
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
+    ) -> T:
+        return self._delegate.generate_structured(
+            prompt, schema=schema, system_prompt=system_prompt, model_tier=model_tier, **kwargs
+        )
+
+    def chat(self, prompt: str, **kwargs: Any) -> str:
+        return self._delegate.chat(prompt, **kwargs)
+
+    def chat_with_response(self, prompt: str, **kwargs: Any) -> LLMResponse:
+        return self._delegate.chat_with_response(prompt, **kwargs)
+
+    def is_available(self) -> bool:
+        return self._delegate.is_available()
+
+    def get_usage_stats(self) -> dict[str, Any]:
+        return self._delegate.get_usage_stats()
+
+    def reset_budget(self, new_budget: float | None = None) -> None:
+        self._delegate.reset_budget(new_budget)
 
 
 def get_default_provider() -> LLMProvider:
-    """
-    Get the default LLM provider.
-
-    Priority:
-    1. Environment variable LLM_PROVIDER
-    2. Global default (GROQ)
-
-    Returns:
-        The default provider
-    """
+    global _default_provider
+    if _default_provider is not None:
+        return _default_provider
     env_provider = os.environ.get("LLM_PROVIDER", "").lower()
     if env_provider:
         return LLMProvider.from_string(env_provider)
-    return _default_provider
+    best = get_best_available_provider()
+    if best != LLMProvider.MOCK:
+        return best
+    return LLMProvider.GEMINI
 
 
-def set_default_provider(provider: LLMProvider) -> None:
-    """
-    Set the default LLM provider.
-
-    Args:
-        provider: The provider to use as default
-    """
+def set_default_provider(provider: LLMProvider | str | None) -> None:
     global _default_provider
+    if isinstance(provider, str):
+        provider = LLMProvider.from_string(provider)
     _default_provider = provider
-    logger.info(f"Default LLM provider set to: {provider.value}")
-
-
-def get_llm_client(
-    provider: LLMProvider | None = None,
-    config: LLMConfig | None = None,
-    force_new: bool = False,
-    **kwargs,
-) -> BaseLLMClient:
-    """
-    Get an LLM client instance.
-
-    This is the main factory function for getting LLM clients.
-    By default, it returns a cached singleton instance.
-
-    Args:
-        provider: LLM provider to use (defaults to environment/global default)
-        config: Configuration for the client
-        force_new: If True, create a new instance instead of using cache
-        **kwargs: Additional config options passed to LLMConfig
-
-    Returns:
-        An LLM client instance
-
-    Example:
-        # Use default provider (Groq by default, or from LLM_PROVIDER env var)
-        client = get_llm_client()
-
-        # Explicitly use Groq
-        client = get_llm_client(provider=LLMProvider.GROQ)
-
-        # With custom config
-        client = get_llm_client(
-            provider=LLMProvider.GROQ,
-            config=LLMConfig(user_budget=2.0, user_id="user123")
-        )
-
-        # Quick config via kwargs
-        client = get_llm_client(user_budget=2.0, user_id="user123")
-    """
-    # Determine provider
-    if provider is None:
-        provider = get_default_provider()
-
-    # Build config
-    if config is None:
-        config = LLMConfig(**kwargs) if kwargs else LLMConfig()
-
-    # Cache key based on provider and user_id
-    cache_key = f"{provider.value}:{config.user_id}"
-
-    # Return cached instance if available and not forcing new
-    if not force_new and cache_key in _client_cache:
-        cached = _client_cache[cache_key]
-        logger.debug(f"Returning cached {provider.value} client for {config.user_id}")
-        return cached
-
-    # Create new instance
-    client = _create_client(provider, config)
-
-    # Cache the instance
-    _client_cache[cache_key] = client
-
-    return client
-
-
-def _create_client(provider: LLMProvider, config: LLMConfig) -> BaseLLMClient:
-    """Create a new LLM client instance."""
-
-    if provider == LLMProvider.GROQ:
-        from agents.llm.groq_client import GroqClient
-
-        return GroqClient(config)
-
-    elif provider == LLMProvider.GEMINI:
-        from agents.llm.gemini import GeminiProvider
-
-        return GeminiProvider(config)
-
-    elif provider == LLMProvider.OPENAI:
-        # Future: implement OpenAI provider
-        raise NotImplementedError("OpenAI provider not yet implemented")
-
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
-
-
-def clear_client_cache() -> None:
-    """Clear the client cache. Useful for testing."""
-    global _client_cache
-    _client_cache = {}
-    logger.info("LLM client cache cleared")
+    if provider is not None:
+        logger.info(f"Default LLM provider set to: {provider.value}")
 
 
 def get_available_providers() -> list[LLMProvider]:
-    """
-    Get list of providers that are configured and available.
-
-    Returns:
-        List of available providers
-    """
-    available = []
-
-    if os.environ.get("GROQ_API_KEY"):
-        available.append(LLMProvider.GROQ)
-
+    available: list[LLMProvider] = [LLMProvider.MOCK]
     if os.environ.get("GEMINI_API_KEY"):
         available.append(LLMProvider.GEMINI)
-
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        available.append(LLMProvider.DEEPSEEK)
+    if os.environ.get("GROQ_API_KEY"):
+        available.append(LLMProvider.GROQ)
     if os.environ.get("OPENAI_API_KEY"):
         available.append(LLMProvider.OPENAI)
-
     return available
 
 
-def get_best_available_provider() -> LLMProvider | None:
-    """
-    Get the best available provider based on configuration.
-
-    Priority:
-    1. LLM_PROVIDER environment variable (if set and available)
-    2. Groq (best free tier)
-    3. Gemini
-    4. OpenAI
-
-    Returns:
-        Best available provider or None if none configured
-    """
+def get_best_available_provider() -> LLMProvider:
     available = get_available_providers()
-
-    if not available:
-        return None
-
-    # Check env var preference
     env_provider = os.environ.get("LLM_PROVIDER", "").lower()
     if env_provider:
         try:
@@ -205,124 +198,56 @@ def get_best_available_provider() -> LLMProvider | None:
         except ValueError:
             pass
 
-    # Priority order
-    priority = [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI]
-
-    for provider in priority:
-        if provider in available:
-            return provider
-
-    return available[0] if available else None
+    priority = [LLMProvider.GEMINI, LLMProvider.DEEPSEEK, LLMProvider.GROQ, LLMProvider.OPENAI, LLMProvider.MOCK]
+    for p in priority:
+        if p in available:
+            return p
+    return LLMProvider.MOCK
 
 
-# =============================================================================
-# Backward Compatibility - GeminiClient alias
-# =============================================================================
-
-
-class GeminiClient(BaseLLMClient):
+def get_llm_client(
+    provider: LLMProvider | str | None = None,
+    config: LLMConfig | None = None,
+    force_new: bool = False,
+    **kwargs: Any,
+) -> BaseLLMClient:
     """
-    Backward-compatible GeminiClient class.
-
-    This is a wrapper that maintains the old GeminiClient API but uses
-    the new provider architecture under the hood. It now defaults to
-    using Groq (better free tier) but can be configured to use any provider.
-
-    For new code, use get_llm_client() instead.
+    Main factory entrypoint for retrieving cached or new LLM clients.
     """
+    if provider is None:
+        provider = get_default_provider()
+    elif isinstance(provider, str):
+        provider = LLMProvider.from_string(provider)
 
-    def __init__(
-        self,
-        api_key: str | None = None,
-        user_budget: float = 1.0,
-        user_id: str = "default",
-        enable_router: bool = True,
-        provider: str | None = None,
-    ):
-        """
-        Initialize a backward-compatible client.
+    if config is None:
+        config = LLMConfig(**kwargs) if kwargs else LLMConfig()
 
-        Args:
-            api_key: API key (deprecated, use env vars instead)
-            user_budget: Budget for this user session
-            user_id: User identifier for tracking
-            enable_router: Whether to enable smart model routing (ignored, always enabled)
-            provider: Override provider (defaults to best available)
-        """
-        # Determine which provider to use
-        if provider:
-            llm_provider = LLMProvider.from_string(provider)
-        else:
-            llm_provider = get_best_available_provider()
-            if llm_provider is None:
-                # Default to Groq if nothing configured
-                llm_provider = LLMProvider.GROQ
-                logger.warning(
-                    "No API keys configured! Set GROQ_API_KEY or GEMINI_API_KEY. "
-                    "Defaulting to Groq."
-                )
+    cache_key = f"{provider.value}:{config.user_id}"
+    if not force_new and cache_key in _client_cache:
+        return _client_cache[cache_key]
 
-        # Build config
-        config = LLMConfig(
-            api_key=api_key, user_budget=user_budget, user_id=user_id, enable_router=enable_router
-        )
+    client = _create_client(provider, config)
+    _client_cache[cache_key] = client
+    return client
 
-        # Get the actual client
-        self._client = get_llm_client(provider=llm_provider, config=config, force_new=True)
-        self.config = config
 
-        logger.info(f"GeminiClient (compat) initialized with provider: {llm_provider.value}")
+def _create_client(provider: LLMProvider, config: LLMConfig) -> BaseLLMClient:
+    if provider == LLMProvider.GEMINI:
+        from agents.llm.gemini_provider import GeminiProvider
+        return GeminiProvider(config)
+    elif provider == LLMProvider.DEEPSEEK:
+        from agents.llm.deepseek_provider import DeepSeekProvider
+        return DeepSeekProvider(config)
+    elif provider == LLMProvider.GROQ:
+        from agents.llm.groq_client import GroqClient
+        return GroqClient(config)
+    elif provider == LLMProvider.MOCK:
+        return MockLLMClient(config)
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def _setup_client(self) -> None:
-        """Not used - setup handled by delegated client."""
-        pass
 
-    def chat(
-        self,
-        prompt: str,
-        task_type: str = "general",
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None,
-        **kwargs,
-    ) -> str:
-        """Send a chat request. Delegates to the underlying provider."""
-        return self._client.chat(
-            prompt=prompt,
-            task_type=task_type,
-            complexity_hint=complexity_hint,
-            max_latency_ms=max_latency_ms,
-            **kwargs,
-        )
-
-    def chat_with_response(
-        self,
-        prompt: str,
-        task_type: str = "general",
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None,
-        **kwargs,
-    ):
-        """Send a chat request with full response. Delegates to the underlying provider."""
-        return self._client.chat_with_response(
-            prompt=prompt,
-            task_type=task_type,
-            complexity_hint=complexity_hint,
-            max_latency_ms=max_latency_ms,
-            **kwargs,
-        )
-
-    def get_provider_name(self) -> str:
-        """Get the actual provider name being used."""
-        return self._client.get_provider_name()
-
-    def get_usage_stats(self) -> dict[str, Any]:
-        """Get usage statistics."""
-        return self._client.get_usage_stats()
-
-    def reset_budget(self, new_budget: float | None = None) -> None:
-        """Reset budget tracking."""
-        self._client.reset_budget(new_budget)
-
-    def is_available(self) -> bool:
-        """Check if the provider is available."""
-        return self._client.is_available()
+def clear_client_cache() -> None:
+    global _client_cache
+    _client_cache = {}
+    logger.info("LLM client cache cleared")

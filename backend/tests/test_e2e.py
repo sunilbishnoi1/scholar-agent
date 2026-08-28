@@ -157,6 +157,7 @@ careful implementation and continued research are essential.
             return "Generic response for unmatched prompt"
 
     mock.chat = Mock(side_effect=generate_response)
+    mock.generate_text = Mock(side_effect=generate_response)
     return mock
 
 
@@ -209,9 +210,8 @@ class TestEndToEndPipeline:
 
     def test_complete_research_flow_success(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test complete pipeline from start to finish."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-001",
                 user_id="test-user",
@@ -239,9 +239,8 @@ class TestEndToEndPipeline:
 
     def test_pipeline_generates_synthesis(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that pipeline generates a synthesis document."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-002",
                 user_id="test-user",
@@ -263,9 +262,8 @@ class TestEndToEndPipeline:
         mock_empty_retriever = Mock()
         mock_empty_retriever.search_papers = Mock(return_value=[])
 
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_empty_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-003",
                 user_id="test-user",
@@ -279,9 +277,8 @@ class TestEndToEndPipeline:
 
     def test_pipeline_respects_max_iterations(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that pipeline respects max_iterations limit."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="e2e-test-004",
                 user_id="test-user",
@@ -301,9 +298,8 @@ class TestEndToEndPipeline:
         def progress_callback(agent, message, percent):
             progress_updates.append({"agent": agent, "message": message, "percent": percent})
 
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm, progress_callback)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm, progress_callback)
             orchestrator.run_sync(
                 project_id="e2e-test-005",
                 user_id="test-user",
@@ -333,7 +329,7 @@ class TestPipelineResilience:
         """Test that pipeline recovers from transient LLM failures."""
         call_count = {"count": 0}
 
-        def flaky_chat(prompt):
+        def flaky_chat(prompt, **kwargs):
             call_count["count"] += 1
             if call_count["count"] <= 2:
                 raise Exception("Transient API error")
@@ -341,12 +337,10 @@ class TestPipelineResilience:
 
         mock_llm = Mock()
         mock_llm.chat = Mock(side_effect=flaky_chat)
+        mock_llm.generate_text = Mock(side_effect=flaky_chat)
 
-        orchestrator = ResearchOrchestrator(mock_llm)
-
-        # Should eventually succeed despite initial failures
-        # The actual behavior depends on retry logic in agents
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(mock_llm)
             try:
                 final_state = orchestrator.run_sync(
                     project_id="resilience-test-001",
@@ -355,26 +349,24 @@ class TestPipelineResilience:
                     research_question="Test question",
                     max_papers=3,
                 )
-                # If it completes, verify it handled errors
                 assert final_state["status"] in ["completed", "error"]
             except Exception:
-                # Expected if retry logic exhausted
                 pass
 
     def test_handles_malformed_llm_responses(self, mock_paper_retriever):
         """Test handling of malformed LLM responses."""
 
-        def malformed_response(prompt):
+        def malformed_response(prompt, **kwargs):
             if "keywords" in prompt.lower():
                 return "This is not valid JSON at all"
             return '{"relevance_score": 50}'
 
         mock_llm = Mock()
         mock_llm.chat = Mock(side_effect=malformed_response)
-
-        orchestrator = ResearchOrchestrator(mock_llm)
+        mock_llm.generate_text = Mock(side_effect=malformed_response)
 
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="malformed-test-001",
                 user_id="test-user",
@@ -383,7 +375,6 @@ class TestPipelineResilience:
                 max_papers=3,
             )
 
-        # Should complete with graceful degradation
         assert final_state["status"] in ["completed", "error"]
 
 
@@ -398,9 +389,8 @@ class TestDataFlow:
 
     def test_keywords_flow_to_retriever(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that planner keywords are used by retriever."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-001",
                 user_id="test-user",
@@ -417,9 +407,8 @@ class TestDataFlow:
 
     def test_papers_flow_to_analyzer(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that retrieved papers are analyzed."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-002",
                 user_id="test-user",
@@ -438,9 +427,8 @@ class TestDataFlow:
 
     def test_analysis_flows_to_synthesizer(self, comprehensive_mock_llm, mock_paper_retriever):
         """Test that paper analyses are used in synthesis."""
-        orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
-
         with patch("agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever):
+            orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
             final_state = orchestrator.run_sync(
                 project_id="dataflow-test-003",
                 user_id="test-user",
@@ -473,10 +461,10 @@ class TestConcurrentExecution:
 
         def run_pipeline(project_id):
             try:
-                orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
                 with patch(
                     "agents.retriever_agent.PaperRetriever", return_value=mock_paper_retriever
                 ):
+                    orchestrator = ResearchOrchestrator(comprehensive_mock_llm)
                     final_state = orchestrator.run_sync(
                         project_id=project_id,
                         user_id="test-user",

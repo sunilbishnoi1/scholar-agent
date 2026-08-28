@@ -40,6 +40,16 @@ describe("StatusChip", () => {
       render(<StatusChip status="error_no_papers_found" />);
       expect(screen.getByText("No Papers Found")).toBeInTheDocument();
     });
+
+    it('renders "Stopped" for stopped status', () => {
+      render(<StatusChip status="stopped" />);
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+    });
+
+    it('renders "Creating..." for creating status', () => {
+      render(<StatusChip status="creating" />);
+      expect(screen.getByText("Creating...")).toBeInTheDocument();
+    });
   });
 
   describe("styling", () => {
@@ -60,6 +70,12 @@ describe("StatusChip", () => {
     it("applies animate-pulse class for in-progress states", () => {
       render(<StatusChip status="searching" />);
       const chip = screen.getByText("Searching...");
+      expect(chip).toHaveClass("animate-pulse");
+    });
+
+    it("applies animate-pulse class for creating state", () => {
+      render(<StatusChip status="creating" />);
+      const chip = screen.getByText("Creating...");
       expect(chip).toHaveClass("animate-pulse");
     });
 

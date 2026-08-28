@@ -131,6 +131,33 @@ export const neonData = {
       console.warn('Failed to delete agent plans:', plansError);
     }
 
+    const { error: reportsError } = await neonClient
+      .from('research_reports')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (reportsError) {
+      console.warn('Failed to delete research reports:', reportsError);
+    }
+
+    const { error: matrixError } = await neonClient
+      .from('evidence_matrix_entries')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (matrixError) {
+      console.warn('Failed to delete evidence matrix entries:', matrixError);
+    }
+
+    const { error: gapsError } = await neonClient
+      .from('research_gaps')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (gapsError) {
+      console.warn('Failed to delete research gaps:', gapsError);
+    }
+
     const { error: papersError } = await neonClient
       .from('paper_references')
       .delete()

@@ -7,7 +7,7 @@ Handles storage and retrieval of paper embeddings using Qdrant.
 import hashlib
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -40,7 +40,7 @@ class SearchResult:
     chunk_type: str
     score: float
     weight: float
-    metadata: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {

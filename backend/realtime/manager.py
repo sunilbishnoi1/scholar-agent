@@ -63,6 +63,11 @@ class ConnectionManager:
         # Redis listener task
         self._redis_listener_task: asyncio.Task | None = None
         self._should_listen = False
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Set the main application event loop for thread-safe cross-thread broadcasts."""
+        self._loop = loop
 
     async def connect(self, websocket: WebSocket, user_id: str, project_id: str) -> bool:
         """
@@ -77,6 +82,11 @@ class ConnectionManager:
             True if connection was established successfully
         """
         try:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
             # Accept the WebSocket connection first (critical for race condition prevention)
             await websocket.accept()
 
@@ -212,6 +222,28 @@ class ConnectionManager:
         for websocket in disconnected:
             await self.disconnect(websocket)
 
+    def sync_broadcast_to_project(self, project_id: str, message: dict):
+        """
+        Synchronously dispatch a broadcast to all project WebSocket clients from a background/worker thread.
+        Uses asyncio.run_coroutine_threadsafe on the running event loop.
+        """
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+                self._loop = loop
+            except RuntimeError:
+                loop = None
+
+        if loop and loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.broadcast_to_project(project_id, message),
+                    loop,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to dispatch sync WebSocket broadcast: {e}")
+
     async def send_to_user(self, user_id: str, message: dict):
         """
         Send a message to all connections for a specific user.
@@ -271,6 +303,12 @@ class ConnectionManager:
 
     async def start_redis_listener(self):
         """Start listening to Redis pub/sub for project updates."""
+        import os
+
+        if os.environ.get("ENABLE_REDIS", "true").lower() in ("false", "0", "no", "off"):
+            logger.info("Redis listener disabled via ENABLE_REDIS=false")
+            return
+
         if self._redis_listener_task is not None:
             logger.warning("Redis listener already running")
             return
@@ -294,75 +332,76 @@ class ConnectionManager:
     async def _redis_listener_loop(self):
         """
         Background task that listens to Redis pub/sub and broadcasts to WebSockets.
-
-        This bridges the gap between synchronous Celery tasks and async WebSocket connections:
-        1. Celery worker publishes events to Redis channels
-        2. This listener receives events from Redis
-        3. Events are broadcast to WebSocket clients subscribed to the project
+        Maintains an active auto-reconnecting loop with exponential backoff.
         """
-        try:
-            from cache.redis_cache import get_cache
+        from cache.redis_cache import get_cache
 
-            cache = get_cache()
-            if not cache.is_connected:
-                logger.error("Redis not connected, cannot start listener")
-                return
+        backoff = 2.0
 
-            pubsub = cache.get_pubsub()
-            if not pubsub:
-                logger.error("Could not get Redis pubsub")
-                return
+        while self._should_listen:
+            try:
+                cache = get_cache()
+                if not cache or not cache.is_connected:
+                    logger.debug(f"Redis not connected. Retrying pub/sub listener in {backoff:.1f}s...")
+                    await asyncio.sleep(backoff)
+                    backoff = min(30.0, backoff * 1.5)
+                    # Attempt reconnect silently
+                    if cache:
+                        cache._connect(silent=True)
+                    continue
 
-            # Subscribe to all project update channels using pattern
-            pubsub.psubscribe("project:*:updates")
-            logger.info("Subscribed to Redis pattern: project:*:updates")
+                pubsub = cache.get_pubsub()
+                if not pubsub:
+                    await asyncio.sleep(backoff)
+                    backoff = min(30.0, backoff * 1.5)
+                    continue
 
-            while self._should_listen:
+                # Reset backoff on successful connection
+                backoff = 2.0
+                pubsub.psubscribe("project:*:updates")
+                logger.info("Redis listener connected and subscribed to: project:*:updates")
+
+                while self._should_listen:
+                    try:
+                        message = await asyncio.to_thread(pubsub.get_message, timeout=0.5)
+                        if message and message["type"] == "pmessage":
+                            channel = (
+                                message["channel"].decode("utf-8")
+                                if isinstance(message["channel"], bytes)
+                                else message["channel"]
+                            )
+                            data = message["data"]
+                            parts = channel.split(":")
+                            if len(parts) >= 2:
+                                project_id = parts[1]
+                                try:
+                                    if isinstance(data, bytes):
+                                        data = data.decode("utf-8")
+                                    event_dict = json.loads(data) if isinstance(data, str) else data
+                                    await self.broadcast_to_project(project_id, event_dict)
+                                    logger.debug(
+                                        f"Redis->WS broadcast to project {project_id}: {event_dict.get('type')}"
+                                    )
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"Failed to decode Redis message: {e}")
+
+                        await asyncio.sleep(0.01)
+                    except Exception as e:
+                        logger.warning(f"Error in active Redis listener loop: {e}")
+                        break  # Break to outer reconnect loop
+
                 try:
-                    # Check for messages (non-blocking with timeout)
-                    message = pubsub.get_message(timeout=1.0)
+                    pubsub.punsubscribe()
+                    pubsub.close()
+                except Exception:
+                    pass
 
-                    if message and message["type"] == "pmessage":
-                        channel = (
-                            message["channel"].decode("utf-8")
-                            if isinstance(message["channel"], bytes)
-                            else message["channel"]
-                        )
-                        data = message["data"]
+            except Exception as e:
+                logger.warning(f"Redis listener encountered error: {e}. Retrying...")
+                await asyncio.sleep(backoff)
+                backoff = min(30.0, backoff * 1.5)
 
-                        # Extract project_id from channel name: "project:{project_id}:updates"
-                        parts = channel.split(":")
-                        if len(parts) >= 2:
-                            project_id = parts[1]
-
-                            # Decode and parse message
-                            try:
-                                if isinstance(data, bytes):
-                                    data = data.decode("utf-8")
-                                event_dict = json.loads(data) if isinstance(data, str) else data
-
-                                # Broadcast to WebSocket clients
-                                await self.broadcast_to_project(project_id, event_dict)
-                                logger.info(
-                                    f"Redis->WS broadcast to project {project_id}: {event_dict.get('type')}"
-                                )
-                            except json.JSONDecodeError as e:
-                                logger.error(f"Failed to decode Redis message: {e}")
-
-                    # Small sleep to prevent busy loop
-                    await asyncio.sleep(0.01)
-
-                except Exception as e:
-                    logger.error(f"Error in Redis listener loop: {e}")
-                    await asyncio.sleep(1.0)  # Back off on error
-
-            # Cleanup
-            pubsub.punsubscribe()
-            pubsub.close()
-            logger.info("Redis listener loop ended")
-
-        except Exception as e:
-            logger.error(f"Fatal error in Redis listener: {e}", exc_info=True)
+        logger.info("Redis listener loop ended.")
 
 
 # Singleton instance

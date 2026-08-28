@@ -112,8 +112,12 @@ Output format (one score per line):
 ...
 """
 
+            from agents.llm.rate_limiter import get_provider_limiter
+            limiter = get_provider_limiter("gemini", api_key=self.api_key, max_rpm=14)
+            limiter.acquire("gemini")
+
             response = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={self.api_key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={self.api_key}",
                 headers={"Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
