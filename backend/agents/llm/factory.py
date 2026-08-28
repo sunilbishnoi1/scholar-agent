@@ -36,7 +36,7 @@ class LLMProvider(StrEnum):
 
 
 _client_cache: dict[str, BaseLLMClient] = {}
-_default_provider: LLMProvider = LLMProvider.GEMINI
+_default_provider: LLMProvider | None = None
 
 
 class MockLLMClient(BaseLLMClient):
@@ -154,7 +154,7 @@ class GeminiClient(BaseLLMClient):
 
 def get_default_provider() -> LLMProvider:
     global _default_provider
-    if _default_provider != LLMProvider.GEMINI:
+    if _default_provider is not None:
         return _default_provider
     env_provider = os.environ.get("LLM_PROVIDER", "").lower()
     if env_provider:
@@ -162,15 +162,16 @@ def get_default_provider() -> LLMProvider:
     best = get_best_available_provider()
     if best != LLMProvider.MOCK:
         return best
-    return _default_provider
+    return LLMProvider.GEMINI
 
 
-def set_default_provider(provider: LLMProvider | str) -> None:
+def set_default_provider(provider: LLMProvider | str | None) -> None:
     global _default_provider
     if isinstance(provider, str):
         provider = LLMProvider.from_string(provider)
     _default_provider = provider
-    logger.info(f"Default LLM provider set to: {provider.value}")
+    if provider is not None:
+        logger.info(f"Default LLM provider set to: {provider.value}")
 
 
 def get_available_providers() -> list[LLMProvider]:

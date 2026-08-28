@@ -88,6 +88,11 @@ class TestLLMFactoryAndResolution:
 
     def setup_method(self):
         clear_client_cache()
+        set_default_provider(None)
+
+    def teardown_method(self):
+        clear_client_cache()
+        set_default_provider(None)
 
     def test_get_llm_client_mock_provider(self):
         """Verify factory returns MockLLMClient when requested."""
@@ -107,6 +112,8 @@ class TestLLMFactoryAndResolution:
         # Reset
         set_default_provider(LLMProvider.GEMINI)
         assert get_default_provider() == LLMProvider.GEMINI
+
+        set_default_provider(None)
 
     def test_gemini_client_adapter(self):
         """Verify backward compatible GeminiClient delegates appropriately."""
