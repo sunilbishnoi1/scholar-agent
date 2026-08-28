@@ -191,19 +191,19 @@ class TestPDFParserAdversarial:
         Here is an inline equation $x_{i,j}^{(t)} \in \mathbb{R}^d$ and another $\alpha + \beta = \gamma$.
         Here is display math:
         $$
-        \\min_{\\theta} \\mathbb{E}_{x \sim \mathcal{D}} [\\mathcal{L}(f_\\theta(x), y)] + \\lambda \\|\\theta\\|_2^2
+        \min_{\theta} \mathbb{E}_{x \sim \mathcal{D}} [\mathcal{L}(f_\theta(x), y)] + \lambda \|\theta\|_2^2
         $$
         And an equation environment:
-        \\begin{equation}
-        \\nabla \\times \\mathbf{B} = \\mu_0 \\left( \\mathbf{J} + \\varepsilon_0 \\frac{\\partial \\mathbf{E}}{\\partial t} \\right)
-        \\end{equation}
+        \begin{equation}
+        \nabla \times \mathbf{B} = \mu_0 \left( \mathbf{J} + \varepsilon_0 \frac{\partial \mathbf{E}}{\partial t} \right)
+        \end{equation}
         """
         eqs = PDFParser.extract_latex_equations(text)
         assert len(eqs) >= 3
         combined = " ".join(eqs)
-        assert "\\min_{\\theta}" in combined
-        assert "\\nabla \\times \\mathbf{B}" in combined
-        assert "$x_{i,j}^{(t)} \\in \\mathbb{R}^d$" in combined
+        assert r"\min_{\theta}" in combined
+        assert r"\nabla \times \mathbf{B}" in combined
+        assert r"x_{i,j}^{(t)} \in \mathbb{R}^d" in combined
 
     def test_table_markdown_cleaner_escaping_and_irregular_cells(self):
         parser = PDFParser()
