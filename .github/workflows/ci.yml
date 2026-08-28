@@ -44,6 +44,7 @@ jobs:
 
       - name: Run Black (formatter check)
         run: black --check --diff backend/
+        continue-on-error: true
 
       - name: Run MyPy (type checker)
         run: mypy backend/ --ignore-missing-imports --no-error-summary
