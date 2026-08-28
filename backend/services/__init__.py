@@ -1,4 +1,16 @@
 # Services module
-from .usage_tracker import TIER_LIMITS, UsageTracker, get_usage_tracker
+try:
+    from .usage_tracker import TIER_LIMITS, UsageTracker, get_usage_tracker
+except ImportError:
+    pass
 
-__all__ = ["TIER_LIMITS", "UsageTracker", "get_usage_tracker"]
+from .cancellation_manager import CancellationManager, TaskCancelledException, cancellation_manager
+
+__all__ = [
+    "TIER_LIMITS",
+    "UsageTracker",
+    "get_usage_tracker",
+    "CancellationManager",
+    "TaskCancelledException",
+    "cancellation_manager",
+]

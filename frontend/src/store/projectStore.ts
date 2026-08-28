@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ResearchProject, ProjectCreate } from '../types';
-import { createProject } from '../api/client';
+import { createProject, deleteProject as apiDeleteProject } from '../api/client';
 import { neonData } from '../api/neonClient';
 import { toast } from 'react-toastify';
 
@@ -40,9 +40,10 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
             keywords: [],
             agent_plans: [],
             paper_references: [],
-            created_at: '',
+            created_at: new Date().toISOString(),
             subtopics: [],
-            total_papers_found: 0
+            total_papers_found: 0,
+            max_papers: newProjectData.max_papers || 30,
         };
 
         set((state) => ({
@@ -81,7 +82,12 @@ export const useProjectStore = create<ProjectState>((set, _get) => ({
         }));
 
         try {
-            await neonData.deleteProject(projectId);
+            try {
+                await apiDeleteProject(projectId);
+            } catch (apiErr) {
+                console.warn("Backend API delete failed, falling back to direct database delete:", apiErr);
+                await neonData.deleteProject(projectId);
+            }
             toast.success(`Project "${projectToDelete.title}" deleted successfully`);
             return true;
         } catch (error) {

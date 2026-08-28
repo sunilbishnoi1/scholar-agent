@@ -1,13 +1,48 @@
-# Base LLM Client Interface
-# Abstract base class that all LLM providers must implement
-# This allows easy switching between providers (Groq, Gemini, OpenAI, etc.)
+"""
+Base LLM Client Interface.
+Defines the abstract BaseLLMClient interface, ModelTier enum, LLMConfig, and LLMResponse.
+"""
+
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from enum import StrEnum
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class ModelTier(StrEnum):
+    """
+    Model tiers representing performance and reasoning capabilities.
+    """
+
+    FAST = "fast"
+    REASONING = "reasoning"
+    STRUCTURED_NLI = "structured_nli"
+
+    @classmethod
+    def from_str(cls, value: str | ModelTier | None) -> ModelTier:
+        """Convert string to ModelTier with backward compatibility support."""
+        if value is None:
+            return cls.FAST
+        if isinstance(value, cls):
+            return value
+
+        val_lower = str(value).lower().strip()
+        if val_lower in ("fast", "fast_cheap", "cheap", "balanced"):
+            return cls.FAST
+        elif val_lower in ("reasoning", "powerful", "deep", "r1", "thinking"):
+            return cls.REASONING
+        elif val_lower in ("structured_nli", "nli", "auditor", "audit", "verification"):
+            return cls.STRUCTURED_NLI
+        return cls.FAST
 
 
 @dataclass
@@ -15,11 +50,14 @@ class LLMConfig:
     """Configuration for LLM client."""
 
     api_key: str | None = None
+    base_url: str | None = None
     user_budget: float = 1.0
     user_id: str = "default"
     enable_router: bool = True
     timeout: int = 60
     max_retries: int = 5
+    temperature: float = 0.7
+    max_tokens: int = 4096
 
     # Provider-specific settings
     extra: dict[str, Any] = field(default_factory=dict)
@@ -48,137 +86,107 @@ class LLMResponse:
 
 class BaseLLMClient(ABC):
     """
-    Abstract base class for all LLM provider clients.
-
-    All LLM providers (Groq, Gemini, OpenAI, Anthropic, etc.) must implement
-    this interface to work with our agent system.
-
-    This abstraction enables:
-    - Easy provider switching via configuration
-    - Consistent API across all providers
-    - Unified error handling and retry logic
-    - Cost and usage tracking
+    Abstract base class for all unified LLM providers.
+    Supports high-capacity text generation and native/fallback structured outputs.
     """
 
-    def __init__(self, config: LLMConfig | None = None):
-        """
-        Initialize the LLM client.
-
-        Args:
-            config: Configuration for the client
-        """
+    def __init__(self, config: LLMConfig | None = None) -> None:
         self.config = config or LLMConfig()
         self._setup_client()
 
     @abstractmethod
     def _setup_client(self) -> None:
-        """
-        Provider-specific setup logic.
-        Called during initialization to set up API keys, clients, etc.
-        """
+        """Provider-specific initialization."""
         pass
 
-    @abstractmethod
-    def chat(
+    def generate_text(
         self,
         prompt: str,
-        task_type: str = "general",
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None,
-        **kwargs,
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
     ) -> str:
         """
-        Send a chat request to the LLM.
-
-        This is the main method that agents use to interact with the LLM.
+        Generate raw text response from the model.
 
         Args:
-            prompt: The prompt text to send
-            task_type: Type of task for routing (e.g., "synthesis", "extract_keywords")
-            complexity_hint: Optional complexity hint ("low", "medium", "high")
-            max_latency_ms: Optional maximum latency requirement
-            **kwargs: Provider-specific parameters
+            prompt: User/task prompt.
+            system_prompt: Optional system instruction.
+            model_tier: Target model tier (FAST, REASONING, STRUCTURED_NLI).
+            **kwargs: Additional parameters (temperature, max_tokens, etc.).
 
         Returns:
-            Response text from the LLM
-
-        Raises:
-            RetryableError: For transient errors after retries exhausted
-            NonRetryableError: For permanent errors (e.g., invalid API key)
+            Generated response string.
         """
-        pass
+        return self.chat(prompt, system_prompt=system_prompt, model_tier=model_tier, **kwargs)
 
-    @abstractmethod
-    def chat_with_response(
+    def generate_structured(
         self,
         prompt: str,
-        task_type: str = "general",
-        complexity_hint: str | None = None,
-        max_latency_ms: int | None = None,
-        **kwargs,
-    ) -> LLMResponse:
+        schema: type[T],
+        system_prompt: str = "",
+        model_tier: str | ModelTier = ModelTier.FAST,
+        **kwargs: Any,
+    ) -> T:
         """
-        Send a chat request and get full response with metadata.
-
-        Use this when you need token counts, cost estimates, etc.
+        Generate structured output adhering strictly to a Pydantic schema.
 
         Args:
-            prompt: The prompt text to send
-            task_type: Type of task for routing
-            complexity_hint: Optional complexity hint
-            max_latency_ms: Optional maximum latency requirement
-            **kwargs: Provider-specific parameters
+            prompt: User/task prompt.
+            schema: Target Pydantic BaseModel subclass.
+            system_prompt: Optional system instruction.
+            model_tier: Target model tier (FAST, REASONING, STRUCTURED_NLI).
+            **kwargs: Additional parameters.
 
         Returns:
-            LLMResponse with text and metadata
+            Instantiated and validated Pydantic model instance of type T.
         """
-        pass
+        from agents.llm.structured_output import parse_and_validate
+
+        raw_text = self.generate_text(prompt, system_prompt=system_prompt, model_tier=model_tier, **kwargs)
+        return parse_and_validate(raw_text, schema)
+
+    def chat(self, prompt: str, **kwargs: Any) -> str:
+        """
+        Send a chat request to the LLM.
+        """
+        return self.generate_text(prompt, **kwargs)
+
+    def chat_with_response(self, prompt: str, **kwargs: Any) -> LLMResponse:
+        """
+        Send a chat request and get full response container with metadata.
+        """
+        text = self.chat(prompt, **kwargs)
+        return LLMResponse(
+            text=text,
+            model="default",
+            provider=self.get_provider_name(),
+            input_tokens=len(prompt) // 4,
+            output_tokens=len(text) // 4,
+            total_tokens=(len(prompt) + len(text)) // 4,
+            estimated_cost=self.estimate_cost(prompt),
+        )
 
     @abstractmethod
     def get_provider_name(self) -> str:
-        """Return the provider name (e.g., 'groq', 'gemini', 'openai')."""
+        """Return provider identifier ('gemini', 'deepseek', 'groq', 'mock')."""
         pass
+
+    def is_available(self) -> bool:
+        """Check if provider credentials and network configurations are available."""
+        return self.config.api_key is not None
 
     @abstractmethod
     def get_usage_stats(self) -> dict[str, Any]:
-        """
-        Get usage statistics for this client.
-
-        Returns:
-            Dictionary with usage stats (spent, remaining budget, etc.)
-        """
+        """Return usage and cost statistics."""
         pass
 
     @abstractmethod
     def reset_budget(self, new_budget: float | None = None) -> None:
-        """
-        Reset budget tracking.
-
-        Args:
-            new_budget: Optional new budget amount
-        """
+        """Reset budget tracking."""
         pass
 
-    def is_available(self) -> bool:
-        """
-        Check if the provider is available (API key configured, etc.).
-
-        Returns:
-            True if the provider can be used
-        """
-        return self.config.api_key is not None
-
-    def estimate_cost(self, prompt: str, task_type: str = "general") -> float:
-        """
-        Estimate the cost of a request before making it.
-
-        Args:
-            prompt: The prompt text
-            task_type: Type of task
-
-        Returns:
-            Estimated cost in USD
-        """
-        # Default implementation - providers should override
-        tokens = len(prompt) // 4  # Rough estimate
-        return tokens * 0.00001  # Very rough cost estimate
+    def estimate_cost(self, prompt: str, model_tier: str | ModelTier = ModelTier.FAST) -> float:
+        """Estimate token cost for prompt."""
+        tokens = len(prompt) // 4
+        return (tokens / 1000) * 0.0001

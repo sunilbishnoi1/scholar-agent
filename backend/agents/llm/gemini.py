@@ -19,6 +19,7 @@ from agents.error_handling import (
 )
 from agents.llm.base import BaseLLMClient, LLMResponse
 from agents.llm.model_config import GEMINI_MODELS, ModelTier
+from agents.llm.rate_limiter import get_provider_limiter, get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +226,8 @@ class GeminiProvider(BaseLLMClient):
 
     def _do_api_request(self, model: str, prompt: str, **kwargs) -> dict[str, Any]:
         """Execute the actual API request to Gemini."""
+        limiter = get_provider_limiter("gemini", api_key=self.api_key, max_rpm=14)
+        limiter.acquire("gemini")
 
         url = self._get_model_url(model)
         headers = {"Content-Type": "application/json"}
@@ -252,8 +255,11 @@ class GeminiProvider(BaseLLMClient):
             status_code = e.response.status_code
 
             if status_code == 429:
+                retry_after_hdr = e.response.headers.get("Retry-After") if e.response is not None else None
+                backoff_hint = f" (Retry-After: {retry_after_hdr}s)" if retry_after_hdr else ""
+                logger.warning(f"Gemini Rate limit exceeded (429){backoff_hint}. Backing off...")
                 raise RetryableError(
-                    f"Rate limit exceeded: {e}", category=ErrorCategory.RATE_LIMIT, severity="low"
+                    f"Rate limit exceeded: {e}{backoff_hint}", category=ErrorCategory.RATE_LIMIT, severity="low"
                 )
             elif status_code >= 500:
                 raise RetryableError(

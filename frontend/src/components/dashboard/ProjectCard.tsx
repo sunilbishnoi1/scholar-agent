@@ -19,7 +19,7 @@ import { styled } from "@mui/system";
 import { useNavigate } from "react-router-dom";
 import type { ResearchProject } from "../../types";
 import StatusChip from "../common/StatusChip";
-import { startLiteratureReview } from "../../api/client";
+import { startLiteratureReview, stopLiteratureReview } from "../../api/client";
 import { useProjectStore } from "../../store/projectStore";
 import { toast } from "react-toastify";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -28,27 +28,28 @@ import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
 import { useProjectStream } from "../../hooks/useProjectStream";
 
-const NoirCard = styled(Card)<{ isCompleted: boolean }>(({ isCompleted }) => ({
+const NoirCard = styled(Card, {
+  shouldForwardProp: (prop) => prop !== "isCreating",
+})<{ isCompleted?: boolean; isCreating?: boolean }>(({ isCreating }) => ({
   display: "flex",
   flexDirection: "column",
   height: "100%",
   borderRadius: "16px",
   backgroundColor: "rgba(24, 24, 27, 0.6)",
   backdropFilter: "blur(12px)",
-  border: "1px solid #27272F",
+  border: isCreating ? "1px dashed rgba(255, 185, 0, 0.4)" : "1px solid #27272F",
   transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-  cursor: isCompleted ? "pointer" : "default",
+  cursor: isCreating ? "default" : "pointer",
   position: "relative",
   overflow: "hidden",
   "&:hover": {
-    transform: isCompleted ? "translateY(-6px)" : "none",
-    borderColor: isCompleted ? "#FFB900" : "#3F3F46",
-    boxShadow: isCompleted
-      ? "0 12px 30px rgba(0,0,0,0.5), 0 0 20px rgba(255, 185, 0, 0.1)"
-      : "none",
-    "& .card-glow": { opacity: 1 },
+    transform: isCreating ? "none" : "translateY(-6px)",
+    borderColor: "#FFB900",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.5), 0 0 20px rgba(255, 185, 0, 0.12)",
+    "& .card-glow": { opacity: isCreating ? 0.4 : 1 },
   },
 }));
 
@@ -170,11 +171,13 @@ const ProgressTracker: React.FC<{
 
 const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
   const { updateProjectStatus, removeProject } = useProjectStore();
+  const isCreating = project.status === "creating" || project.id.startsWith("temp-");
   const isProcessing = [
     "planning",
     "searching",
     "analyzing",
     "synthesizing",
+    "in_progress",
   ].includes(project.status);
   const { papersAnalyzed, totalPapers } = useProjectStream(
     isProcessing ? project.id : undefined,
@@ -183,13 +186,19 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const navigate = useNavigate();
+
+  const handleCardClick = () => {
+    if (isCreating) return;
+    navigate(`/project/${project.id}`);
+  };
 
   const handleStartReview = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       updateProjectStatus(project.id, "planning");
-      await startLiteratureReview(project.id);
+      await startLiteratureReview(project.id, project.max_papers || 30);
     } catch (err) {
       console.error(err);
       toast.error("Deployment failed. Re-initialize system.");
@@ -197,15 +206,32 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
     }
   };
 
+  const handleStopReview = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isStopping) return;
+    setIsStopping(true);
+    try {
+      updateProjectStatus(project.id, "stopped");
+      await stopLiteratureReview(project.id);
+      toast.info(`Research task stopped for "${project.title}".`);
+    } catch (err) {
+      console.error("Failed to stop literature review:", err);
+      toast.error("Failed to signal stop to backend.");
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
   const isCompleted = project.status === "completed";
+  const isStopped = project.status === "stopped";
   const isFailed =
     project.status === "error" || project.status === "error_no_papers_found";
 
   return (
     <>
       <NoirCard
-        isCompleted={isCompleted}
-        onClick={() => isCompleted && navigate(`/project/${project.id}`)}
+        isCreating={isCreating}
+        onClick={handleCardClick}
       >
         <CardGlow className="card-glow" />
 
@@ -222,11 +248,16 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
           <StatusChip status={project.status} />
           <IconButton
             size="small"
+            disabled={isCreating}
             onClick={(e) => {
               e.stopPropagation();
+              if (isCreating) return;
               setDeleteDialogOpen(true);
             }}
-            sx={{ color: "#3F3F46", "&:hover": { color: "#EF4444" } }}
+            sx={{
+              color: isCreating ? "#27272F" : "#3F3F46",
+              "&:hover": { color: isCreating ? "#27272F" : "#EF4444" },
+            }}
           >
             <DeleteOutlineIcon fontSize="small" />
           </IconButton>
@@ -269,7 +300,9 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
                 sx={{ fontSize: 14, color: "#52525B" }}
               />
               <Typography variant="caption" sx={{ color: "#71717A" }}>
-                {new Date(project.created_at).toLocaleDateString()}
+                {project.created_at
+                  ? new Date(project.created_at).toLocaleDateString()
+                  : new Date().toLocaleDateString()}
               </Typography>
             </Box>
             {project.total_papers_found > 0 && (
@@ -281,6 +314,44 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
               </Box>
             )}
           </Box>
+
+          {isCreating && (
+            <Box sx={{ mt: 3, width: "100%" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 1,
+                }}
+              >
+                <ProgressText
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    color: "#FFB900",
+                  }}
+                >
+                  <CircularProgress size={12} sx={{ color: "#FFB900" }} />
+                  Formulating research scope & initial plan...
+                </ProgressText>
+              </Box>
+              <LinearProgress
+                variant="indeterminate"
+                sx={{
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 2,
+                    background:
+                      "linear-gradient(90deg, #FFB900 0%, #00F5C8 100%)",
+                  },
+                }}
+              />
+            </Box>
+          )}
 
           {isProcessing && (
             <ProgressTracker
@@ -294,7 +365,32 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
         <Divider sx={{ borderColor: "#27272F", opacity: 0.5 }} />
 
         <Box sx={{ p: 2, backgroundColor: "rgba(9, 9, 11, 0.4)", zIndex: 1 }}>
-          {project.status === "created" && (
+          {isCreating && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1.5,
+                py: 0.75,
+              }}
+            >
+              <CircularProgress size={14} sx={{ color: "#FFB900" }} />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "#FFB900",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Initializing Workspace...
+              </Typography>
+            </Box>
+          )}
+
+          {project.status === "created" && !isCreating && (
             <ActionButton
               variant_type="amber"
               fullWidth
@@ -302,6 +398,17 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
               startIcon={<AutoAwesomeIcon />}
             >
               Initiate Agents
+            </ActionButton>
+          )}
+
+          {isStopped && (
+            <ActionButton
+              variant_type="amber"
+              fullWidth
+              onClick={handleStartReview}
+              startIcon={<RefreshIcon />}
+            >
+              Restart Research
             </ActionButton>
           )}
 
@@ -328,7 +435,14 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
           )}
 
           {isProcessing && (
-            <Box sx={{ textAlign: "center", py: 0.5 }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                py: 0.5,
+              }}
+            >
               <Typography
                 variant="caption"
                 sx={{
@@ -340,6 +454,35 @@ const ProjectCard: React.FC<{ project: ResearchProject }> = ({ project }) => {
               >
                 Neural Link Active
               </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleStopReview}
+                disabled={isStopping}
+                startIcon={
+                  isStopping ? (
+                    <CircularProgress size={12} color="inherit" />
+                  ) : (
+                    <StopCircleOutlinedIcon sx={{ fontSize: 16 }} />
+                  )
+                }
+                sx={{
+                  color: "#EF4444",
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  textTransform: "none",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  py: 0.25,
+                  px: 1.2,
+                  borderRadius: "6px",
+                  "&:hover": {
+                    borderColor: "#EF4444",
+                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  },
+                }}
+              >
+                {isStopping ? "Stopping..." : "Stop Task"}
+              </Button>
             </Box>
           )}
         </Box>

@@ -102,10 +102,16 @@ class IntelligentCache:
             CacheTier.SESSION: CacheStats(),
         }
 
-        self._connect()
+        self.enabled = os.environ.get("ENABLE_REDIS", "true").lower() not in ("false", "0", "no", "off")
+        if self.enabled:
+            self._connect()
 
-    def _connect(self) -> bool:
+    def _connect(self, silent: bool = False) -> bool:
         """Establish Redis connection with error handling."""
+        if not getattr(self, "enabled", True):
+            self._connected = False
+            return False
+
         try:
             self._redis = redis.from_url(
                 self.redis_url,
@@ -120,11 +126,17 @@ class IntelligentCache:
             logger.info(f"Redis cache connected: {self.redis_url}")
             return True
         except redis.ConnectionError as e:
-            logger.warning(f"Redis connection failed: {e}. Cache will be disabled.")
+            if silent:
+                logger.debug(f"Redis connection failed: {e}. Cache will be disabled.")
+            else:
+                logger.warning(f"Redis connection failed: {e}. Cache will be disabled.")
             self._connected = False
             return False
         except Exception as e:
-            logger.error(f"Unexpected Redis error: {e}")
+            if silent:
+                logger.debug(f"Unexpected Redis error: {e}")
+            else:
+                logger.error(f"Unexpected Redis error: {e}")
             self._connected = False
             return False
 

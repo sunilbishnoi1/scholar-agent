@@ -249,6 +249,72 @@ class TestAgentEvents:
         assert event_dict["progress"] == 50.0
         assert "timestamp" in event_dict
 
+    def test_v3_2_event_creators(self):
+        """Test all 9 standard v3.2 event factory helpers."""
+        from realtime.events import (
+            EventType,
+            create_critic_verdict_event,
+            create_discovery_started_event,
+            create_fact_checked_event,
+            create_matrix_row_added_event,
+            create_paper_discovered_event,
+            create_pdf_parsed_event,
+            create_pipeline_completed_event,
+            create_pipeline_error_event,
+            create_thematic_draft_ready_event,
+        )
+
+        # 1. discovery_started
+        e1 = create_discovery_started_event("p1", queries=["transformer architecture", "attention mechanism"])
+        assert e1.type == EventType.DISCOVERY_STARTED
+        assert len(e1.data["queries"]) == 2
+
+        # 2. paper_discovered
+        e2 = create_paper_discovered_event("p1", "paper-1", "Attention is All You Need", authors=["Vaswani et al."], year=2017)
+        assert e2.type == EventType.PAPER_DISCOVERED
+        assert e2.data["paper_id"] == "paper-1"
+        assert e2.data["year"] == 2017
+
+        # 3. pdf_parsed
+        e3 = create_pdf_parsed_event("p1", "paper-1", "Attention is All You Need", is_full_text=True, sections_count=8, tables_count=2)
+        assert e3.type == EventType.PDF_PARSED
+        assert e3.data["is_full_text"] is True
+        assert e3.data["sections_count"] == 8
+
+        # 4. matrix_row_added
+        e4 = create_matrix_row_added_event("p1", {"title": "BERT", "methodology": "Masked LM", "dataset": "BookCorpus"})
+        assert e4.type == EventType.MATRIX_ROW_ADDED
+        assert e4.data["row"]["methodology"] == "Masked LM"
+
+        # 5. thematic_draft_ready
+        e5 = create_thematic_draft_ready_event("p1", section_count=4, debates_count=2, gaps_count=3, iteration=1)
+        assert e5.type == EventType.THEMATIC_DRAFT_READY
+        assert e5.data["section_count"] == 4
+        assert e5.data["iteration"] == 1
+
+        # 6. critic_verdict
+        e6 = create_critic_verdict_event("p1", score=82.5, should_refine=False, iteration=1)
+        assert e6.type == EventType.CRITIC_VERDICT
+        assert e6.data["score"] == 82.5
+        assert e6.data["should_refine"] is False
+
+        # 7. fact_checked
+        e7 = create_fact_checked_event("p1", precision_score=94.2, passed=True, total_propositions=25)
+        assert e7.type == EventType.FACT_CHECKED
+        assert e7.data["precision_score"] == 94.2
+        assert e7.data["passed"] is True
+
+        # 8. pipeline_completed
+        e8 = create_pipeline_completed_event("p1", report={"title": "Synthesis Report"}, summary={"papers_analyzed": 15})
+        assert e8.type == EventType.PIPELINE_COMPLETED
+        assert e8.progress == 100.0
+        assert e8.data["papers_analyzed"] == 15
+
+        # 9. pipeline_error
+        e9 = create_pipeline_error_event("p1", error_message="Fatal network failure")
+        assert e9.type == EventType.PIPELINE_ERROR
+        assert e9.data["error"] == "Fatal network failure"
+
 
 class TestAgentProgressTracker:
     """Tests for the AgentProgressTracker helper class."""
@@ -264,20 +330,20 @@ class TestAgentProgressTracker:
         assert tracker.completed_agents == []
 
     def test_progress_calculation_weights(self):
-        """Test that progress is calculated correctly with weights."""
+        """Test that progress is calculated correctly with 7-phase weights."""
         from realtime.events import AgentProgressTracker
 
         tracker = AgentProgressTracker("project-123")
 
-        # Complete planner (10% weight)
-        tracker.completed_agents = ["planner"]
-        tracker.current_agent = "retriever"
-        tracker.agent_progress = {"planner": 100, "retriever": 50}
+        # Complete discovery/planner (15% weight)
+        tracker.completed_agents = ["discovery"]
+        tracker.current_agent = "ingestion"
+        tracker.agent_progress = {"discovery": 100, "ingestion": 50}
 
         progress = tracker._calculate_total_progress()
 
-        # Should be: 10% (planner complete) + 50% of 20% (retriever half done) = 20%
-        assert progress == 20.0
+        # Should be: 15% (discovery complete) + 50% of 25% (ingestion half done) = 27.5%
+        assert progress == 27.5
 
     def test_progress_tracker_agent_lifecycle(self):
         """Test starting and completing agents."""

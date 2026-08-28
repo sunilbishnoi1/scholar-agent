@@ -399,7 +399,7 @@ class TestProjectsEndpoints:
             assert response.status_code == 200
             data = response.json()
             assert "job_id" in data
-            assert data["status"] == "queued"
+            assert data["status"] in ["queued", "started"]
 
     def test_delete_project_success(self, setup_test_db, mock_user, mock_project):
         """Test deleting a project successfully."""
@@ -428,8 +428,8 @@ class TestProjectsEndpoints:
         assert "deleted successfully" in data["message"]
         mock_db.delete.assert_called_once_with(mock_project)
         mock_db.commit.assert_called_once()
-        # Verify all related tables are queried for deletion (LLMInteraction, AgentPlan, PaperReference)
-        assert mock_db.query.return_value.filter.return_value.delete.call_count == 3
+        # Verify all related tables are queried for deletion (ResearchReportModel, EvidenceMatrixEntry, ResearchGapModel, LLMInteraction, AgentPlan, PaperReference)
+        assert mock_db.query.return_value.filter.return_value.delete.call_count == 6
 
     def test_delete_project_not_found(self, setup_test_db, mock_user):
         """Test deleting non-existent project returns 404."""
@@ -682,3 +682,165 @@ class TestCeleryTaskImports:
         sig = inspect.signature(run_literature_review)
         assert "project_id" in sig.parameters
         assert "max_papers" in sig.parameters
+
+
+# ============================================
+# Phase 5 REST Endpoints Tests
+# ============================================
+
+
+class TestPhase5Endpoints:
+    """Tests for Milestone 1 Phase 5 endpoints (report, matrix, gaps, sections)."""
+
+    def test_get_project_report_success(self, setup_test_db, mock_user, mock_project):
+        """Test retrieving structured project report."""
+        import auth
+        from db import get_db
+        from main import app
+        from models.database import EvidenceMatrixEntry, ResearchGapModel, ResearchReportModel
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.get(f"/api/projects/{mock_project.id}/report")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["project_id"] == mock_project.id
+
+    def test_get_project_matrix_success(self, setup_test_db, mock_user, mock_project):
+        """Test retrieving evidence matrix for a project."""
+        import auth
+        from db import get_db
+        from main import app
+        from models.database import EvidenceMatrixEntry
+
+        sample_entry = EvidenceMatrixEntry(
+            id="entry-1",
+            project_id=mock_project.id,
+            paper_id="paper-101",
+            title="Transformer Architecture",
+            methodology_type="Self-Attention",
+            benchmark_dataset="WMT 2014",
+            primary_metric="BLEU 28.4",
+            primary_limitation="Quadratic complexity",
+            created_at=datetime.utcnow(),
+        )
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [sample_entry]
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.get(f"/api/projects/{mock_project.id}/matrix")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["project_id"] == mock_project.id
+        assert data["count"] == 1
+        assert data["entries"][0]["paper_id"] == "paper-101"
+        assert data["entries"][0]["methodology"] == "Self-Attention"
+
+    def test_get_project_gaps_success(self, setup_test_db, mock_user, mock_project):
+        """Test retrieving research gaps for a project."""
+        import auth
+        from db import get_db
+        from main import app
+        from models.database import ResearchGapModel
+
+        sample_gap = ResearchGapModel(
+            id="gap-1",
+            project_id=mock_project.id,
+            gap_id="GAP-01",
+            description="Lack of long-context quadratic scaling benchmarks.",
+            importance="high",
+            recommended_methodology="FlashAttention-3 sparse validation",
+            grounding_paper_ids=["paper-101"],
+            created_at=datetime.utcnow(),
+        )
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [sample_gap]
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.get(f"/api/projects/{mock_project.id}/gaps")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["project_id"] == mock_project.id
+        assert data["count"] == 1
+        assert data["gaps"][0]["gap_id"] == "GAP-01"
+        assert data["gaps"][0]["priority"] == "high"
+
+    def test_get_paper_sections_success(self, setup_test_db, mock_user):
+        """Test retrieving parsed sections from PaperCache."""
+        import auth
+        from db import get_db
+        from main import app
+        from models.database import PaperCache
+
+        sample_cache = PaperCache(
+            doi="10.1016/j.artint.2023.01",
+            arxiv_id="2301.0001",
+            title="Deep Learning Review",
+            authors=["Alice", "Bob"],
+            year=2023,
+            venue="AI Journal",
+            abstract="Sample abstract.",
+            is_full_text=True,
+            sections_json=[
+                {"heading": "Introduction", "content": "Intro text...", "section_index": 1},
+                {"heading": "Methods", "content": "Methods text...", "section_index": 2},
+            ],
+            tables_json=[{"id": "table-1", "caption": "Table 1"}],
+            source_url="https://arxiv.org/abs/2301.0001",
+        )
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = sample_cache
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.get("/api/papers/2301.0001/sections")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "Deep Learning Review"
+        assert data["is_full_text"] is True
+        assert len(data["sections"]) == 2
+
+    def test_get_paper_sections_not_found(self, setup_test_db, mock_user):
+        """Test paper sections returns 404 when not in cache or references."""
+        import auth
+        from db import get_db
+        from main import app
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        app.dependency_overrides[auth.get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        client = TestClient(app)
+        response = client.get("/api/papers/nonexistent-paper/sections")
+
+        app.dependency_overrides.clear()
+        assert response.status_code == 404

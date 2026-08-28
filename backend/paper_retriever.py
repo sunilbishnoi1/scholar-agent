@@ -210,25 +210,36 @@ class PaperRetriever:
 
         return papers, was_rate_limited
 
-    def search_papers(self, search_terms: list[str], max_papers: int):
+    def search_papers(
+        self,
+        search_terms: list[str] | str | None = None,
+        max_papers: int = 10,
+        query: str | None = None,
+        limit: int | None = None,
+        **kwargs,
+    ):
         """
         Orchestrates searching across multiple academic APIs using a list of search terms.
-
-        Implements adaptive rate limiting with smart API switching:
-        - Tracks consecutive failures per API
-        - Skips APIs that are consistently failing (don't waste time)
-        - Adjusts delays dynamically based on rate limit feedback
-        - Stops early if both APIs are unavailable (proceed with papers found so far)
-        - arXiv is prioritized as it rarely rate-limits
+        Supports both list[str] or single query string, with max_papers or limit.
         """
-        if not search_terms:
+        effective_max = limit if limit is not None else max_papers
+        if search_terms is None and query is not None:
+            terms = [query] if isinstance(query, str) else list(query)
+        elif isinstance(search_terms, str):
+            terms = [search_terms]
+        elif isinstance(search_terms, (list, tuple, set)):
+            terms = list(search_terms)
+        else:
+            terms = []
+
+        if not terms:
             logging.error("No search terms provided to search_papers method.")
             return []
 
-        logging.info(f"Received search terms: {search_terms}")
+        logging.info(f"Received search terms: {terms}")
 
         # Calculate how many papers to fetch per search term from each source
-        papers_per_query = max(1, max_papers // (len(search_terms) * 2)) if search_terms else 0
+        papers_per_query = max(1, effective_max // (len(terms) * 2)) if terms else 0
 
         all_papers = []
 

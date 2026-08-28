@@ -16,12 +16,7 @@ from agents.error_handling import (
     RetryConfig,
     with_retry,
 )
-from agents.llm import GeminiClient, get_llm_client
-from agents.model_router import (  # Use ModelTier from model_router
-    ModelTier,
-    SmartModelRouter,
-    get_router,
-)
+from agents.llm import GeminiClient, ModelTier, get_llm_client
 
 # Import all components
 from agents.orchestrator import ResearchOrchestrator, create_orchestrator
@@ -135,11 +130,11 @@ class TestEndToEndResearchPipeline:
         # Check that expected agents ran (case-insensitive)
         agent_names_lower = [name.lower() for name in agent_names if name]
         assert any(
-            "planner" in name for name in agent_names_lower
-        ), f"Planner not found in {agent_names}"
+            "supervisor" in name or "planner" in name for name in agent_names_lower
+        ), f"Supervisor/Planner not found in {agent_names}"
         assert any(
-            "retriever" in name for name in agent_names_lower
-        ), f"Retriever not found in {agent_names}"
+            "discovery" in name or "retriever" in name for name in agent_names_lower
+        ), f"Discovery/Retriever not found in {agent_names}"
         # Analyzer and Synthesizer may not run if no papers found, so don't assert them
 
         # Verify we have keywords
@@ -241,61 +236,6 @@ class TestEndToEndResearchPipeline:
         assert (
             refinement_count["count"] >= 1
         ), f"Quality checker was not called. Count: {refinement_count['count']}"
-
-
-class TestModelRouterIntegration:
-    """Integration tests for smart model router."""
-
-    def test_router_reduces_costs_for_simple_tasks(self):
-        """Test that router uses cheaper models for simple tasks."""
-        router = SmartModelRouter(user_budget=1.0)
-
-        # Simple task should use cheap model
-        decision = router.route(
-            task_type="extract_keywords", prompt="Extract keywords from: AI in education"
-        )
-
-        assert decision.model == ModelTier.FAST_CHEAP
-        assert decision.estimated_cost < 0.001  # Very low cost
-
-    def test_router_uses_powerful_model_for_complex_tasks(self):
-        """Test that router uses powerful model for complex tasks."""
-        router = SmartModelRouter(user_budget=1.0)
-
-        # Complex task should use powerful model
-        decision = router.route(
-            task_type="research_gap_identification",
-            prompt="Analyze the following 50 papers and identify research gaps: " + "X" * 2000,
-        )
-
-        assert decision.model == ModelTier.POWERFUL
-
-    def test_router_downgrades_when_budget_low(self):
-        """Test that router downgrades model when budget is exhausted."""
-        router = SmartModelRouter(user_budget=0.01)
-        router.spent = 0.009  # 90% of budget spent
-
-        # Even complex task should downgrade
-        decision = router.route(
-            task_type="synthesis", prompt="Synthesize findings from 30 papers: " + "X" * 1000
-        )
-
-        assert decision.model == ModelTier.FAST_CHEAP
-
-    def test_router_tracks_spending_correctly(self):
-        """Test that router tracks spending across multiple calls."""
-        router = SmartModelRouter(user_budget=1.0)
-
-        # Make multiple routing decisions
-        for i in range(5):
-            decision = router.route(task_type="paper_analysis", prompt="Analyze paper " + "X" * 500)
-            router.record_usage(decision.estimated_cost)
-
-        # Should have tracked spending
-        assert router.spent > 0
-        stats = router.get_stats()
-        assert stats["spent"] == router.spent
-        assert stats["remaining"] < router.user_budget
 
 
 class TestErrorHandlingIntegration:
@@ -473,34 +413,3 @@ class TestPerformanceAndScalability:
                 research_question="Test?",
             )
             assert final_state["status"] == "completed"
-
-
-# Run integration tests with different configurations
-@pytest.mark.parametrize(
-    "budget,expected_tier",
-    [
-        (10.0, ModelTier.POWERFUL),  # High budget
-        (1.0, ModelTier.BALANCED),  # Medium budget
-        (0.1, ModelTier.FAST_CHEAP),  # Low budget
-    ],
-)
-def test_budget_affects_model_selection(budget, expected_tier):
-    """Test that budget correctly influences model selection."""
-    router = SmartModelRouter(user_budget=budget)
-
-    # For low budget test, simulate that we've spent most of the budget
-    if budget < 0.5:
-        # Spend 90% of the tiny budget to trigger downgrade
-        router.spent = budget * 0.9
-
-    # Make a synthesis request (normally uses powerful model)
-    decision = router.route(task_type="synthesis", prompt="Synthesize findings: " + "X" * 500)
-
-    # With low budget and high spending, should downgrade
-    if budget < 0.5:
-        assert (
-            decision.model == ModelTier.FAST_CHEAP
-        ), f"Expected FAST_CHEAP but got {decision.model} (budget={budget}, spent={router.spent})"
-    else:
-        # With sufficient budget, should use appropriate tier
-        assert decision.model in (ModelTier.BALANCED, ModelTier.POWERFUL)

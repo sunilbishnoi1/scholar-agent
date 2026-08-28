@@ -9,7 +9,6 @@ build-backend = "setuptools.build_meta"
 name = "scholar-agent"
 version = "1.0.0"
 description = "Production-grade AI Research Assistant for automated literature reviews"
-readme = "../README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 classifiers = [
@@ -27,12 +26,29 @@ classifiers = [
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn>=0.29.0",
-    "sqlalchemy>=2.0.29",
-    "pydantic>=2.8.0",
     "celery[redis]>=5.4.0",
-    "qdrant-client>=1.9.0",
+    "sqlalchemy>=2.0.29",
+    "psycopg2-binary>=2.9.9",
+    "requests>=2.32.3",
+    "python-dotenv>=1.0.1",
+    "pydantic[email]>=2.8.0",
+    "python-multipart>=0.0.9",
+    "passlib[bcrypt]>=1.7.3",
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
+    "sib-api-v3-sdk",
+    "resend",
+    "markdown>=3.6",
     "langgraph>=0.2.0",
+    "langchain>=0.3.0",
     "langchain-core>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "google-generativeai>=0.8.0",
+    "qdrant-client>=1.11.0",
+    "redis>=5.0.0",
+    "openai>=1.0.0",
+    "groq>=0.5.0",
+    "pymupdf>=1.23.0",
 ]
 
 [project.optional-dependencies]

@@ -12,7 +12,9 @@ const statusStyles: { [key in ResearchProject['status']]: string } = {
   searching: 'bg-cyan-100 text-cyan-800 animate-pulse',
   analyzing: 'bg-indigo-100 text-indigo-800 animate-pulse',
   synthesizing: 'bg-purple-100 text-purple-800 animate-pulse',
+  in_progress: 'bg-amber-100 text-amber-800 animate-pulse',
   completed: 'bg-green-100 text-green-800',
+  stopped: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
   error: 'bg-red-100 text-red-800',
   error_no_papers_found: 'bg-yellow-100 text-yellow-800',
 };
@@ -24,10 +26,12 @@ const statusText: { [key in ResearchProject['status']]: string } = {
     searching: 'Searching...',
     analyzing: 'Analyzing...',
     synthesizing: 'Synthesizing...',
+    in_progress: 'In Progress...',
     completed: 'Completed',
+    stopped: 'Stopped',
     error: 'Error',
     error_no_papers_found: 'No Papers Found',
-}
+};
 
 const StatusChip: React.FC<StatusChipProps> = ({ status }) => {
   const style = statusStyles[status] || 'bg-gray-100 text-blue-500';

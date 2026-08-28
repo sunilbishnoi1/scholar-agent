@@ -47,8 +47,9 @@ global.IntersectionObserver = class IntersectionObserver {
   thresholds = []
 }
 
-// Mock scrollTo
+// Mock scrollTo & scrollIntoView
 window.scrollTo = () => {}
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
 
 // Mock localStorage
 const localStorageMock = {

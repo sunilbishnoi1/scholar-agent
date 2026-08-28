@@ -1,11 +1,30 @@
-# Agents Module
-# Exposes the new LangGraph-based agent architecture
+"""
+Agents Module.
+Exposes the multi-agent architecture, schemas, LLM providers, blackboard, and reasoning specialists.
+"""
 
-from agents.analyzer import PaperAnalyzerAgent as LegacyAnalyzerAgent
 from agents.analyzer_agent import PaperAnalyzerAgent
 from agents.base import BaseAgent, ToolEnabledAgent
-
-# Error Handling (Phase 1 - Enhanced Retry Logic)
+from agents.blackboard import WorkingMemoryBlackboard
+from agents.core import (
+    AdversarialCriticAgent,
+    AuditorAgent,
+    AutonomousLiteratureExplorer,
+    AutonomousSupervisorAgent,
+    CriticAgent,
+    DeterministicCitationAuditorAgent,
+    DiscoveryAgent,
+    EvidenceMatrixBuilder,
+    FullTextIngestionSpecialist,
+    IngestionAgent,
+    MatrixBuilderAgent,
+    SectionAwareContextPacker,
+    SynthesizerAgent,
+    ThematicSynthesizerAgent,
+    build_scholar_agent_graph,
+    finalizer_node,
+    should_refine_or_finalize,
+)
 from agents.error_handling import (
     CircuitBreaker,
     ErrorCategory,
@@ -17,34 +36,33 @@ from agents.error_handling import (
     get_circuit_breaker,
     with_retry,
 )
-
-# New LLM Provider Architecture (Phase 2 - Multi-provider support)
 from agents.llm import (
+    DEEPSEEK_MODELS,
     GEMINI_MODELS,
     GROQ_MODELS,
-    # Base classes
     BaseLLMClient,
+    DeepSeekProvider,
+    GeminiClient,
     GeminiProvider,
-    # Providers
     GroqClient,
     LLMConfig,
     LLMProvider,
     LLMResponse,
+    MockLLMClient,
     ModelConfig,
-    # Model configuration
     ModelTier,
+    StructuredOutputError,
+    clear_client_cache,
+    get_available_providers,
+    get_best_available_provider,
     get_default_provider,
-    # Factory (main entry point)
     get_llm_client,
     get_model_config,
+    parse_and_validate,
     set_default_provider,
+    to_gemini_schema,
+    to_openai_response_format,
 )
-
-# Backward-compatible GeminiClient (now uses Groq by default)
-from agents.llm.factory import GeminiClient
-
-# Model Router (Phase 1 - Cost-Aware Selection)
-from agents.model_router import RoutingDecision, SmartModelRouter, get_router
 from agents.observability import (
     AgentTrace,
     AgentTracer,
@@ -54,44 +72,131 @@ from agents.observability import (
     trace_step,
     tracer,
 )
-from agents.orchestrator import ResearchOrchestrator, create_orchestrator
-
-# Legacy imports for backward compatibility
-from agents.planner import ResearchPlannerAgent as LegacyPlannerAgent
+from agents.orchestrator import (
+    QualityCheckerAgent,
+    ResearchOrchestrator,
+    ScholarAgentOrchestrator,
+    create_orchestrator,
+)
 from agents.planner_agent import ResearchPlannerAgent
-from agents.quality_checker_agent import QualityCheckerAgent
 from agents.retriever_agent import PaperRetrieverAgent
+from agents.schemas import (
+    AcademicPaperCandidate,
+    AnalyzerInput,
+    AnalyzerOutput,
+    BibliographyItem,
+    Citation,
+    CitationAuditReport,
+    ConflictingDebate,
+    CriticDimensionScore,
+    CriticEvaluation,
+    EvidenceMatrixExtraction,
+    EvidenceMatrixRow,
+    GapImportance,
+    MethodologyDistribution,
+    MethodologyOverview,
+    NLIVerdict,
+    PaperAnalysis,
+    PaperInsight,
+    PlannerInput,
+    PlannerOutput,
+    PropositionVerification,
+    QualityIndicators,
+    RankedPaper,
+    ReportMetadata,
+    ReportSection,
+    ReportStatistics,
+    ReportStatus,
+    ResearchGap,
+    ResearchGapItem,
+    ResearchReport,
+    RetrieverInput,
+    RetrieverOutput,
+    SearchQueryPlan,
+    SearchStrategy,
+    SectionType,
+    SynthesizerInput,
+    SynthesizerOutput,
+    Theme,
+    ThematicSection,
+    ThematicSynthesisDraft,
+    YearDistribution,
+)
 from agents.state import (
     AgentMessage,
     AgentResult,
     AgentState,
     AgentType,
+    GoalItem,
+    GoalStatus,
     PaperData,
+    ParsedPaperData,
+    TelemetryEvent,
+    create_initial_agent_state,
     create_initial_state,
 )
-from agents.synthesizer import SynthesisExecutorAgent as LegacySynthesizerAgent
 from agents.synthesizer_agent import SynthesisExecutorAgent
+from agents.tools import (
+    CITATION_ANCHOR_REGEX,
+    AtomicProposition,
+    FactCheckerEngine,
+    MultiSourceAcademicSearch,
+    OAResolver,
+    PDFParser,
+)
 
 __all__ = [
-    # State
+    # State & Memory
     "AgentState",
     "AgentType",
     "AgentResult",
     "AgentMessage",
     "PaperData",
+    "ParsedPaperData",
+    "GoalItem",
+    "GoalStatus",
+    "TelemetryEvent",
     "create_initial_state",
+    "create_initial_agent_state",
+    "WorkingMemoryBlackboard",
     # Base classes
     "BaseAgent",
     "ToolEnabledAgent",
-    # Agents
+    # Core Reasoning Specialists (M4)
+    "AutonomousLiteratureExplorer",
+    "DiscoveryAgent",
+    "FullTextIngestionSpecialist",
+    "IngestionAgent",
+    "EvidenceMatrixBuilder",
+    "MatrixBuilderAgent",
+    "ThematicSynthesizerAgent",
+    "SynthesizerAgent",
+    "SectionAwareContextPacker",
+    "AdversarialCriticAgent",
+    "CriticAgent",
+    "DeterministicCitationAuditorAgent",
+    "AuditorAgent",
+    "AutonomousSupervisorAgent",
+    "build_scholar_agent_graph",
+    "should_refine_or_finalize",
+    "finalizer_node",
+    # Legacy Agents
     "ResearchPlannerAgent",
     "PaperRetrieverAgent",
     "PaperAnalyzerAgent",
     "SynthesisExecutorAgent",
     "QualityCheckerAgent",
     # Orchestrator
+    "ScholarAgentOrchestrator",
     "ResearchOrchestrator",
     "create_orchestrator",
+    # Fact Checker & Tools
+    "FactCheckerEngine",
+    "AtomicProposition",
+    "CITATION_ANCHOR_REGEX",
+    "MultiSourceAcademicSearch",
+    "OAResolver",
+    "PDFParser",
     # Observability
     "AgentTracer",
     "tracer",
@@ -100,11 +205,7 @@ __all__ = [
     "LLMTrace",
     "AgentTrace",
     "StructuredLogger",
-    # Model Router (Legacy - Phase 1)
-    "SmartModelRouter",
-    "RoutingDecision",
-    "get_router",
-    # Error Handling (Phase 1)
+    # Error Handling
     "with_retry",
     "RetryConfig",
     "CircuitBreaker",
@@ -114,21 +215,72 @@ __all__ = [
     "RetryableError",
     "NonRetryableError",
     "ErrorContext",
-    # LLM Providers (Phase 2 - New Architecture)
+    # LLM Providers
     "BaseLLMClient",
     "LLMResponse",
     "LLMConfig",
     "GroqClient",
     "GeminiProvider",
+    "DeepSeekProvider",
+    "MockLLMClient",
+    "GeminiClient",
     "get_llm_client",
     "LLMProvider",
     "get_default_provider",
     "set_default_provider",
+    "get_available_providers",
+    "get_best_available_provider",
+    "clear_client_cache",
     "ModelTier",
     "ModelConfig",
     "GROQ_MODELS",
     "GEMINI_MODELS",
+    "DEEPSEEK_MODELS",
     "get_model_config",
-    # Legacy/Client (backward compatible)
-    "GeminiClient",
+    "StructuredOutputError",
+    "parse_and_validate",
+    "to_gemini_schema",
+    "to_openai_response_format",
+    # Schemas
+    "ReportStatus",
+    "GapImportance",
+    "NLIVerdict",
+    "SectionType",
+    "EvidenceMatrixRow",
+    "ThematicSection",
+    "ConflictingDebate",
+    "ResearchGapItem",
+    "MethodologyDistribution",
+    "BibliographyItem",
+    "ReportMetadata",
+    "ResearchReport",
+    "PropositionVerification",
+    "CitationAuditReport",
+    "CriticDimensionScore",
+    "CriticEvaluation",
+    "AcademicPaperCandidate",
+    "SearchQueryPlan",
+    "EvidenceMatrixExtraction",
+    "ThematicSynthesisDraft",
+    "Citation",
+    "ReportSection",
+    "ResearchGap",
+    "MethodologyOverview",
+    "PaperInsight",
+    "ReportStatistics",
+    "QualityIndicators",
+    "Theme",
+    "PlannerInput",
+    "SearchStrategy",
+    "PlannerOutput",
+    "RetrieverInput",
+    "RankedPaper",
+    "RetrieverOutput",
+    "AnalyzerInput",
+    "PaperAnalysis",
+    "AnalyzerOutput",
+    "SynthesizerInput",
+    "SynthesizerOutput",
+    "YearDistribution",
 ]
+

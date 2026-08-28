@@ -64,7 +64,7 @@ class TestLatencyBenchmarks:
                 research_question="How does AI affect education?",
             )
             start = time.perf_counter()
-            result = asyncio.get_event_loop().run_until_complete(agent.run(state))
+            result = asyncio.run(agent.run(state))
             end = time.perf_counter()
             latencies.append((end - start) * 1000)  # Convert to ms
 
@@ -104,7 +104,7 @@ class TestLatencyBenchmarks:
             state["papers"] = [paper]
 
             start = time.perf_counter()
-            result = asyncio.get_event_loop().run_until_complete(agent.run(state))
+            result = asyncio.run(agent.run(state))
             end = time.perf_counter()
             latencies.append((end - start) * 1000)
 
@@ -114,29 +114,22 @@ class TestLatencyBenchmarks:
         # Allow more time for async overhead and logging in test environment
         assert avg_latency < 2000, f"Analyzer too slow: {avg_latency}ms avg"
 
-    def test_model_router_latency(self):
-        """Benchmark model router decision latency."""
-        from agents.model_router import SmartModelRouter
-
-        router = SmartModelRouter(user_budget=1.0)
+    def test_model_config_lookup_latency(self):
+        """Benchmark model config lookup latency."""
+        from agents.llm import ModelTier, get_model_config
 
         latencies = []
         for i in range(100):
-            prompt = "Test prompt " * (i + 1)
-
             start = time.perf_counter()
-            decision = router.route(task_type="paper_analysis", prompt=prompt)
+            cfg = get_model_config("gemini", ModelTier.FAST)
             end = time.perf_counter()
             latencies.append((end - start) * 1000)
 
         avg_latency = statistics.mean(latencies)
         max_latency = max(latencies)
 
-        print(f"\nModel Router Latency - Avg: {avg_latency:.4f}ms, Max: {max_latency:.4f}ms")
-
-        # Router should be very fast (no LLM calls)
-        assert avg_latency < 1, f"Router too slow: {avg_latency}ms avg"
-        assert max_latency < 5, f"Router max latency too high: {max_latency}ms"
+        print(f"\nModel Config Lookup Latency - Avg: {avg_latency:.4f}ms, Max: {max_latency:.4f}ms")
+        assert avg_latency < 1, f"Model config lookup too slow: {avg_latency}ms avg"
 
 
 # ============================================
@@ -352,7 +345,7 @@ class TestScalability:
             state["papers"] = papers
 
             start = time.perf_counter()
-            result = asyncio.get_event_loop().run_until_complete(agent.run(state))
+            result = asyncio.run(agent.run(state))
             end = time.perf_counter()
 
             timings[n_papers] = end - start
@@ -370,42 +363,7 @@ class TestScalability:
         assert 1.5 <= ratio_5_to_10 <= 2.5, f"Non-linear scaling: {ratio_5_to_10}"
         assert 1.5 <= ratio_10_to_20 <= 2.5, f"Non-linear scaling: {ratio_10_to_20}"
 
-    def test_router_scales_with_history(self):
-        """Test that router doesn't slow down with usage history."""
-        from agents.model_router import SmartModelRouter
 
-        router = SmartModelRouter(user_budget=100.0)
-
-        # Warm up
-        for _ in range(10):
-            router.route("paper_analysis", "test prompt")
-
-        # Measure initial performance
-        start = time.perf_counter()
-        for _ in range(100):
-            router.route("paper_analysis", "test prompt")
-        initial_time = time.perf_counter() - start
-
-        # Simulate lots of usage
-        for _ in range(1000):
-            decision = router.route("paper_analysis", "test prompt")
-            router.record_usage(decision.estimated_cost)
-
-        # Measure performance after heavy usage
-        start = time.perf_counter()
-        for _ in range(100):
-            router.route("paper_analysis", "test prompt")
-        final_time = time.perf_counter() - start
-
-        slowdown = final_time / initial_time
-
-        print("\nRouter Scaling with History:")
-        print(f"  Initial: {initial_time*1000:.2f}ms for 100 calls")
-        print(f"  After 1000 uses: {final_time*1000:.2f}ms for 100 calls")
-        print(f"  Slowdown factor: {slowdown:.2f}x")
-
-        # Should not slow down significantly
-        assert slowdown < 2.0, f"Router slowed down too much: {slowdown}x"
 
 
 # ============================================
@@ -461,7 +419,6 @@ class TestPerformanceRegression:
         "planner_init": 10,  # ms
         "analyzer_init": 10,  # ms
         "state_creation": 1,  # ms
-        "router_decision": 0.5,  # ms
     }
 
     def test_agent_initialization_regression(self, fast_mock_llm):
@@ -504,21 +461,3 @@ class TestPerformanceRegression:
         assert (
             avg_latency < self.BASELINES["state_creation"] * 2
         ), f"State creation regression: {avg_latency}ms (baseline: {self.BASELINES['state_creation']}ms)"
-
-    def test_router_decision_regression(self):
-        """Test that router decision hasn't regressed."""
-        from agents.model_router import SmartModelRouter
-
-        router = SmartModelRouter(user_budget=1.0)
-
-        latencies = []
-        for _ in range(100):
-            start = time.perf_counter()
-            router.route("paper_analysis", "Test prompt for analysis")
-            latencies.append((time.perf_counter() - start) * 1000)
-
-        avg_latency = statistics.mean(latencies)
-
-        assert (
-            avg_latency < self.BASELINES["router_decision"] * 2
-        ), f"Router decision regression: {avg_latency}ms (baseline: {self.BASELINES['router_decision']}ms)"
