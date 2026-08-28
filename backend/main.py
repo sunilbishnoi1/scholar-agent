@@ -1558,7 +1558,8 @@ def _run_literature_review_internal(project_id: str, max_papers: int):
 
     llm_client = get_llm_client()
     tracker = AgentProgressTracker(project_id)
-    orchestrator = ScholarAgentOrchestrator(
+    import agents.orchestrator
+    orchestrator = agents.orchestrator.ScholarAgentOrchestrator(
         llm_client=llm_client,
         db_session=db,
         progress_callback=tracker.progress_callback_adapter,

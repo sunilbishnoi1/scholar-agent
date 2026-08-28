@@ -260,6 +260,7 @@ class TestCeleryExecutionAndDBPersistence:
         }
 
         with patch("agents.orchestrator.ScholarAgentOrchestrator") as MockOrchestrator, \
+             patch("backend.main.ScholarAgentOrchestrator", new=MockOrchestrator), \
              patch("main.send_completion_email") as mock_email:
             orchestrator_instance = MagicMock()
             
@@ -365,7 +366,8 @@ class TestCeleryExecutionAndDBPersistence:
         db_session.commit()
         project_id = project.id
 
-        with patch("agents.orchestrator.ScholarAgentOrchestrator") as MockOrchestrator:
+        with patch("agents.orchestrator.ScholarAgentOrchestrator") as MockOrchestrator, \
+             patch("backend.main.ScholarAgentOrchestrator", new=MockOrchestrator):
             orchestrator_instance = MagicMock()
             orchestrator_instance.run_sync.side_effect = RuntimeError("Simulated LLM rate limit explosion")
             MockOrchestrator.return_value = orchestrator_instance
