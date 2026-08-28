@@ -157,6 +157,9 @@ ignore = [
     "RUF015",  # Prefer next(...) over single element slice
     "RUF005",  # Consider iterable unpack
     "RUF010",  # Explicit conversion flag
+    "RUF001",  # String contains ambiguous unicode character
+    "RUF002",  # Docstring contains ambiguous unicode character
+    "RUF003",  # Comment contains ambiguous unicode character
     "PLR5501", # Collapsible else if
     "PLR1714", # Repeated equality comparison
     "PLW0602", # Global variable not modified

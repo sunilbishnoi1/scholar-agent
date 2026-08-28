@@ -1507,10 +1507,6 @@ def send_completion_email(
 
 def _run_literature_review_internal(project_id: str, max_papers: int):
     """Execute the full literature review pipeline synchronously/in worker thread."""
-    from agents.llm import get_llm_client
-    from agents.orchestrator import ScholarAgentOrchestrator
-    from realtime.events import AgentProgressTracker
-
     task_engine = create_engine(
         os.environ.get("DATABASE_URL", "sqlite:///./test.db"),
         pool_pre_ping=True,
